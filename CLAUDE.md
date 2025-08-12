@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+## 🚨 GOOGLE COLAB TESTING ENVIRONMENT
+**This application is designed and optimized specifically for Google Colab testing and execution only.** All development, testing, and deployment activities should be conducted within Google Colab notebooks. The application has been configured with Colab-specific optimizations for file handling, networking, dependencies, and browser automation.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview

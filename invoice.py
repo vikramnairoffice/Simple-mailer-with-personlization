@@ -1,6 +1,7 @@
 import os
 import random
 import tempfile
+import io
 from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -18,6 +19,16 @@ try:
 except ImportError:
     print("Please install PyMuPDF: pip install pymupdf")
     exit(1)
+
+try:
+    from PIL import Image
+    import pillow_heif
+    # Enable HEIF/HEIC support in Pillow
+    pillow_heif.register_heif_opener()
+    HEIC_AVAILABLE = True
+except ImportError:
+    print("HEIC support not available. Install with: pip install pillow-heif pillow")
+    HEIC_AVAILABLE = False
 
 class InvoiceGenerator:
     def __init__(self):
@@ -49,6 +60,32 @@ class InvoiceGenerator:
             return True
         except Exception as e:
             print(f"Error converting PDF to image: {e}")
+            return False
+
+    def convert_pdf_to_heic(self, pdf_path, output_path, dpi=135):
+        """Convert PDF to HEIC format using PyMuPDF and Pillow"""
+        if not HEIC_AVAILABLE:
+            print("HEIC support not available. Please install: pip install pillow-heif pillow")
+            return False
+            
+        try:
+            # First convert PDF to image data using PyMuPDF
+            doc = fitz.open(pdf_path)
+            page = doc.load_page(0)  # Get first page
+            mat = fitz.Matrix(dpi/72, dpi/72)  # 72 is default DPI
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Convert pixmap to PIL Image
+            img_data = pix.tobytes("png")
+            img = Image.open(io.BytesIO(img_data))
+            
+            # Save as HEIC
+            img.save(output_path, format="HEIF")
+            doc.close()
+            print(f"Converted to HEIC: {output_path}")
+            return True
+        except Exception as e:
+            print(f"Error converting PDF to HEIC: {e}")
             return False
 
     def get_random_logo(self):
@@ -315,11 +352,15 @@ class InvoiceGenerator:
         temp_dir = tempfile.gettempdir()
         pdf_path = os.path.join(temp_dir, f"{filename_base}.pdf")
         image_path = os.path.join(temp_dir, f"{filename_base}.png")
+        heic_path = os.path.join(temp_dir, f"{filename_base}.heic")
         
         self.create_pdf(pdf_path)
         
         if output_format == "pdf":
             return pdf_path
-        else:
+        elif output_format == "heic":
+            self.convert_pdf_to_heic(pdf_path, heic_path)
+            return heic_path
+        else:  # default to image/png
             self.convert_pdf_to_image(pdf_path, image_path)
             return image_path

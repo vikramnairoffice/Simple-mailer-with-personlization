@@ -34,7 +34,7 @@ def gradio_ui():
             
             with gr.Row():
                 support_number = gr.Textbox(label="Support Phone Number", value="", placeholder="e.g. 123-456-7890")
-                attachment_format = gr.Radio(["pdf", "image"], value="pdf", label="Attachment Format")
+                attachment_format = gr.Radio(["pdf", "image", "heic"], value="pdf", label="Attachment Format")
             
             with gr.Row():
                 include_pdfs = gr.Checkbox(label="📄 Include PDF attachments", value=True)
