@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ide__executeCode",
+      "Bash(python test_png_generation.py:*)",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(playwright install:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
