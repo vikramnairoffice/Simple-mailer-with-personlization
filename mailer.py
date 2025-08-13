@@ -78,11 +78,34 @@ def _oauth_console_login(creds_json_path):
     creds = flow.run_console()
     return creds
 
-def _ensure_service_for_sender(creds_json_path, email_hint=None):
+def _ensure_service_for_sender(creds_json_path, email_hint=None, credential_files=None):
     """Ensure Gmail service exists for sender, handling OAuth if needed"""
     if not GMAIL_API_AVAILABLE:
         return None
+    
+    # Try new authentication manager first
+    try:
+        from gmail_auth_manager import gmail_auth_manager
         
+        # Load credentials if provided
+        if credential_files:
+            gmail_auth_manager.load_credentials(credential_files)
+        
+        # Try to get service for the account
+        if email_hint:
+            service = gmail_auth_manager.get_service_for_account(email_hint)
+            if service:
+                return service
+        
+        # If new system fails, fallback to old system
+        print(f"New auth system failed for {email_hint}, falling back to legacy auth...")
+        
+    except ImportError:
+        print("New authentication system not available, using legacy auth...")
+    except Exception as e:
+        print(f"Error with new authentication system: {e}, falling back to legacy auth...")
+        
+    # Legacy authentication system (fallback)
     # First try to load existing token for email_hint
     if email_hint:
         service = _build_service_from_token(email_hint)
@@ -439,8 +462,9 @@ def send_worker(account, leads_queue, results_queue, config):
         if config['gmail_credentials_files']:
             try:
                 gmail_service = _ensure_service_for_sender(
-                    config['gmail_credentials_files'][0].name, 
-                    account['email']
+                    config['gmail_credentials_files'][0].name if config.get('gmail_credentials_files') else None, 
+                    account['email'],
+                    config.get('gmail_credentials_files')
                 )
             except:
                 pass

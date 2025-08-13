@@ -2,6 +2,7 @@ import gradio as gr
 from mailer import main_worker, update_file_stats, update_attachment_stats
 from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, SENDER_NAME_TYPES, DEFAULT_SENDER_NAME_TYPE
 from gmass_scraper import run_gmass_test_and_fetch_scores, start_real_send_with_selected_smtps
+from gmail_auth_ui import update_auth_status_from_accounts, authenticate_single_account, get_credential_summary, create_gmail_auth_interface
 
 def gradio_ui():
     """Main function to create and return Gradio interface."""
@@ -31,7 +32,9 @@ def gradio_ui():
             
             with gr.Row():
                 use_gmail_api = gr.Checkbox(label="🔧 Use Gmail API for @gmail.com accounts", value=False)
-                gmail_credentials_files = gr.File(label="Gmail OAuth Client JSON Files", file_count="multiple", file_types=[".json"])
+            
+            # Gmail Authentication Section (NEW IMPROVED INTERFACE!)
+            gmail_auth_components = create_gmail_auth_interface()
             
             with gr.Row():
                 support_number = gr.Textbox(label="Support Phone Numbers (one per line)", value="", placeholder="e.g. 123-456-7890\n098-765-4321", lines=2)
@@ -69,10 +72,22 @@ def gradio_ui():
                 account_errors_display = gr.HTML(label="Account Errors", value="No errors yet")
                 error_summary = gr.HTML(label="Error Summary")
             
+            # File change handlers
             accounts_file.change(update_file_stats, inputs=[accounts_file, leads_file], outputs=[accounts_stats, leads_stats])
             leads_file.change(update_file_stats, inputs=[accounts_file, leads_file], outputs=[accounts_stats, leads_stats])
             include_pdfs.change(update_attachment_stats, inputs=[include_pdfs, include_images], outputs=attachment_stats)
             include_images.change(update_attachment_stats, inputs=[include_pdfs, include_images], outputs=attachment_stats)
+            
+            # Gmail authentication handlers (NEW INTERFACE!)
+            # Update auth status when accounts file changes
+            def update_auth_display_with_new_interface(acc_file):
+                return update_auth_status_from_accounts(acc_file, gmail_auth_components['credential_files'])
+            
+            accounts_file.change(
+                fn=update_auth_display_with_new_interface,
+                inputs=[accounts_file],
+                outputs=[gmail_auth_components['auth_status_display']]
+            )
             
             def update_gmass_visibility(mode_value):
                 return gr.update(value=mode_value == "gmass")
@@ -83,7 +98,7 @@ def gradio_ui():
                 run_gmass_test_and_fetch_scores,
                 inputs=[accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
                        include_pdfs, include_images, support_number, attachment_format, 
-                       use_gmail_api, gmail_credentials_files, sender_name_type],
+                       use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
                 outputs=[gmass_status, gmass_results_table]
             )
             
@@ -91,7 +106,7 @@ def gradio_ui():
                 start_real_send_with_selected_smtps,
                 inputs=[accounts_file, leads_file, leads_per_account, subjects_text, bodies_text, 
                        include_pdfs, include_images, support_number, attachment_format, 
-                       use_gmail_api, gmail_credentials_files, sender_name_type],
+                       use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
                 outputs=[log_box, progress_html, account_errors_display, error_summary]
             )
             
@@ -99,7 +114,7 @@ def gradio_ui():
                 main_worker,
                 inputs=[accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
                        subjects_text, bodies_text, gmass_recipients_text, include_pdfs, include_images, 
-                       support_number, attachment_format, use_gmail_api, gmail_credentials_files, sender_name_type],
+                       support_number, attachment_format, use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
                 outputs=[log_box, progress_html, account_errors_display, error_summary]
             )
     
