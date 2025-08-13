@@ -1,7 +1,7 @@
 import gradio as gr
 from mailer import main_worker, update_file_stats, update_attachment_stats
 from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, SENDER_NAME_TYPES, DEFAULT_SENDER_NAME_TYPE
-from gmass_scraper import run_gmass_test_and_fetch_scores, start_real_send_with_selected_smtps
+from gmass_scraper import run_gmass_test_only, fetch_gmass_scores_only, start_real_send_with_selected_smtps
 from gmail_auth_ui import update_auth_status_from_accounts, authenticate_single_account, get_credential_summary, create_gmail_auth_interface
 
 def gradio_ui():
@@ -56,7 +56,8 @@ def gradio_ui():
                 scrape_gmass_scores = gr.Checkbox(label="Auto-scrape GMass scores", value=True, visible=False)
                 
                 with gr.Row():
-                    gmass_test_btn = gr.Button("🧪 Run GMass Test & Fetch Scores", variant="secondary")
+                    gmass_test_btn = gr.Button("🧪 Send Test Emails to GMass", variant="secondary")
+                    get_scores_btn = gr.Button("📊 Get Scores", variant="secondary")
                     real_send_btn = gr.Button("🚀 Start Real Send with Selected SMTPs", variant="primary")
                 
                 gmass_status = gr.HTML(label="GMass Test Status", value="")
@@ -95,10 +96,16 @@ def gradio_ui():
             mode.change(update_gmass_visibility, inputs=[mode], outputs=[scrape_gmass_scores])
             
             gmass_test_btn.click(
-                run_gmass_test_and_fetch_scores,
+                run_gmass_test_only,
                 inputs=[accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
                        include_pdfs, include_images, support_number, attachment_format, 
                        use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
+                outputs=[gmass_status, gmass_results_table]
+            )
+            
+            get_scores_btn.click(
+                fetch_gmass_scores_only,
+                inputs=[accounts_file],
                 outputs=[gmass_status, gmass_results_table]
             )
             

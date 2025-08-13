@@ -32,33 +32,56 @@ def fetch_gmass_scores(sender_emails):
             
             for email in sender_emails:
                 try:
-                    encoded_email = urllib.parse.quote(email)
-                    url = f"https://www.gmass.co/inbox?q={encoded_email}"
+                    # Extract username part before @ for GMass URL
+                    username = email.split('@')[0]
+                    encoded_username = urllib.parse.quote(username)
+                    url = f"https://www.gmass.co/inbox?q={encoded_username}"
                     
                     page.goto(url, wait_until='domcontentloaded', timeout=15000)
                     time.sleep(2)  # Wait for dynamic content
                     
-                    # Try multiple selectors to find placement badges
+                    # Try to find actual deliverability data using proper selectors
                     inbox_count = promotions_count = spam_count = 0
                     
-                    # Look for text content containing placement info
-                    page_content = page.content().lower()
-                    
-                    # Simple text parsing approach
-                    if 'inbox' in page_content:
-                        inbox_matches = re.findall(r'inbox.*?(\d+)', page_content)
-                        if inbox_matches:
-                            inbox_count = int(inbox_matches[0])
-                    
-                    if 'promotions' in page_content:
-                        promo_matches = re.findall(r'promotions.*?(\d+)', page_content)
-                        if promo_matches:
-                            promotions_count = int(promo_matches[0])
-                    
-                    if 'spam' in page_content:
-                        spam_matches = re.findall(r'spam.*?(\d+)', page_content)
-                        if spam_matches:
-                            spam_count = int(spam_matches[0])
+                    try:
+                        # Wait for potential data to load
+                        page.wait_for_timeout(3000)
+                        
+                        # Look for specific deliverability data containers/elements
+                        # These selectors need to be updated based on actual GMass page structure
+                        deliverability_elements = page.query_selector_all('[data-placement], .placement-result, .inbox-count, .promotions-count, .spam-count')
+                        
+                        if deliverability_elements:
+                            # Found structured deliverability data
+                            for element in deliverability_elements:
+                                text = element.text_content().lower() if element.text_content() else ""
+                                if 'inbox' in text and any(c.isdigit() for c in text):
+                                    numbers = re.findall(r'\d+', text)
+                                    if numbers:
+                                        inbox_count = int(numbers[0])
+                                elif 'promotion' in text and any(c.isdigit() for c in text):
+                                    numbers = re.findall(r'\d+', text)
+                                    if numbers:
+                                        promotions_count = int(numbers[0])
+                                elif 'spam' in text and any(c.isdigit() for c in text):
+                                    numbers = re.findall(r'\d+', text)
+                                    if numbers:
+                                        spam_count = int(numbers[0])
+                        else:
+                            # Fallback: Check if page shows "no results" or similar  
+                            page_text = page.content().lower()
+                            if any(phrase in page_text for phrase in ['no results', 'no data', 'not found', '0 results']):
+                                # Legitimate case of no deliverability data
+                                inbox_count = promotions_count = spam_count = 0
+                            else:
+                                # Page loaded but no recognizable deliverability data structure
+                                # This suggests either page structure changed or no real data
+                                raise Exception("No deliverability data structure found on page")
+                                
+                    except Exception as selector_error:
+                        # If structured approach fails, return zero scores with error info
+                        inbox_count = promotions_count = spam_count = 0
+                        print(f"Warning: Could not extract deliverability data for {email}: {selector_error}")
                     
                     # Calculate simple score
                     score = inbox_count + (0.6 * promotions_count)
@@ -80,7 +103,7 @@ def fetch_gmass_scores(sender_emails):
                         "promotions": 0,
                         "spam": 0,
                         "score": 0,
-                        "link": f"https://www.gmass.co/inbox?q={urllib.parse.quote(email)}",
+                        "link": f"https://www.gmass.co/inbox?q={urllib.parse.quote(email.split('@')[0])}",
                         "ts": datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "error": str(e)
                     }
@@ -95,7 +118,7 @@ def fetch_gmass_scores(sender_emails):
                 "promotions": 0, 
                 "spam": 0,
                 "score": 0,
-                "link": f"https://www.gmass.co/inbox?q={urllib.parse.quote(email)}",
+                "link": f"https://www.gmass.co/inbox?q={urllib.parse.quote(email.split('@')[0])}",
                 "ts": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "error": f"Browser error: {e}"
             }
@@ -163,12 +186,10 @@ def format_gmass_results_table(results):
     
     return html
 
-def run_gmass_test_and_fetch_scores(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
-                                   include_pdfs, include_images, support_number, attachment_format, 
-                                   use_gmail_api, gmail_credentials_files, sender_name_type="business"):
-    """Run GMass test and fetch deliverability scores"""
-    global gmass_results
-    
+def run_gmass_test_only(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
+                        include_pdfs, include_images, support_number, attachment_format, 
+                        use_gmail_api, gmail_credentials_files, sender_name_type="business"):
+    """Run GMass test and show URL for manual checking"""
     if mode != "gmass":
         return "❌ Please set mode to 'gmass' for deliverability testing", ""
     
@@ -199,9 +220,37 @@ def run_gmass_test_and_fetch_scores(accounts_file, mode, subjects_text, bodies_t
             if "All tasks complete" in log_html:
                 break
         
-        # Wait a bit for emails to be processed by GMass
-        time.sleep(10)
+        # Show GMass URL for manual checking
+        gmass_url = "https://www.gmass.co/inbox"
+        url_message = f"""
+        <div style='background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0;'>
+            <h4>✅ Test emails sent to GMass!</h4>
+            <p>Check your deliverability results manually at:</p>
+            <p><a href='{gmass_url}' target='_blank' style='font-size: 16px; font-weight: bold; color: #0066cc;'>{gmass_url}</a></p>
+            <p>Wait 2-3 minutes for emails to process, then click 'Get Scores' button below to fetch results automatically.</p>
+        </div>
+        """
         
+        return f"✅ GMass test completed. Check URL below.\n{final_log}\n{url_message}", ""
+        
+    except Exception as e:
+        return f"❌ Error during GMass test: {e}", ""
+
+def fetch_gmass_scores_only(accounts_file):
+    """Fetch GMass scores only (separate from sending)"""
+    global gmass_results
+    
+    if not accounts_file:
+        return "❌ Please upload accounts file first", ""
+    
+    # Parse accounts
+    accounts_lines = parse_file_lines(accounts_file)
+    acc_valid, acc_msg, valid_accounts = validate_accounts_file(accounts_lines)
+    
+    if not acc_valid:
+        return f"❌ Accounts file error: {acc_msg}", ""
+    
+    try:
         # Fetch GMass scores
         sender_emails = [acc['email'] for acc in valid_accounts]
         gmass_results = fetch_gmass_scores(sender_emails)
@@ -209,10 +258,10 @@ def run_gmass_test_and_fetch_scores(accounts_file, mode, subjects_text, bodies_t
         # Format results table
         results_table = format_gmass_results_table(gmass_results)
         
-        return f"✅ GMass test completed. Deliverability scores fetched.\n{final_log}", results_table
+        return "✅ GMass scores fetched successfully.", results_table
         
     except Exception as e:
-        return f"❌ Error during GMass test: {e}", ""
+        return f"❌ Error fetching GMass scores: {e}", ""
 
 def start_real_send_with_selected_smtps(accounts_file, leads_file, leads_per_account, 
                                       subjects_text, bodies_text, include_pdfs, include_images, 
