@@ -4,6 +4,7 @@ from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, 
 from gmass_scraper import run_gmass_test_and_fetch_scores, start_real_send_with_selected_smtps
 
 def gradio_ui():
+    """Main function to create and return Gradio interface."""
     with gr.Blocks() as demo:
         gr.Markdown("""
         # Multi-Account Email Sender with GMass Deliverability Testing
@@ -104,5 +105,15 @@ def gradio_ui():
     
     return demo
 
+def main():
+    """Main entry point for console script."""
+    app = gradio_ui()
+    app.launch(
+        share=True,
+        server_name="0.0.0.0", 
+        server_port=7860,
+        debug=False
+    )
+
 if __name__ == "__main__":
-    gradio_ui().launch()
+    main()

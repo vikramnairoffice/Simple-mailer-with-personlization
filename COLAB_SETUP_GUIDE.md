@@ -8,37 +8,34 @@ This guide provides step-by-step instructions to run the Simple Mailer applicati
 2. Sign in with your Google account
 3. Create a new notebook by clicking **"New notebook"**
 
-## Step 2: Clone the Repository
+## Step 2: Install Application (One Command!)
 
-In the first cell, run:
-
-```python
-# Clone the repository
-!git clone https://github.com/vikramnairoffice/Simple-mailer-with-personlization.git
-%cd Simple-mailer-with-personlization
-
-# List files to verify
-!ls -la
-```
-
-## Step 3: Install Dependencies
-
-In the next cell, install all required packages:
+**Simple Method - Install directly from GitHub:**
 
 ```python
-# Install core dependencies
-!pip install gradio reportlab pymupdf faker playwright
+# Option 1: Public repository (if public)
+!pip install -q git+https://github.com/vikramnairoffice/Simple-mailer-with-personlization.git
 
-# Install Gmail API dependencies (optional)
-!pip install google-auth-oauthlib google-api-python-client
+# Option 2: Private repository with token
+# !pip install -q git+https://vikramnairoffice:YOUR_GITHUB_TOKEN@github.com/vikramnairoffice/Simple-mailer-with-personlization.git
 
 # Install browser for GMass scraping
 !playwright install chromium
 
-print("✅ All dependencies installed successfully!")
+print("✅ Application and all dependencies installed automatically!")
 ```
 
-## Step 4: Create Required Directories
+**Alternative Method - Manual Clone:**
+
+```python
+# If pip install doesn't work, use manual clone
+!git clone https://github.com/vikramnairoffice/Simple-mailer-with-personlization.git
+%cd Simple-mailer-with-personlization
+!pip install -r requirements.txt
+!playwright install chromium
+```
+
+## Step 3: Create Required Directories
 
 ```python
 # Create directories for file uploads and generated content
@@ -52,7 +49,7 @@ for dir_name in directories:
 print("All directories created!")
 ```
 
-## Step 5: Upload Account Files
+## Step 4: Upload Account Files
 
 Create a new cell to upload your email accounts file:
 
@@ -82,7 +79,7 @@ with open('accounts.txt', 'r') as f:
         print(f"{i}. {email.strip()}")
 ```
 
-## Step 6: Upload Leads File
+## Step 5: Upload Leads File
 
 ```python
 print("Upload your leads/recipients file (one email per line)")
@@ -103,7 +100,7 @@ with open('leads.txt', 'r') as f:
     print(f"\n📋 Total leads: {leads_count}")
 ```
 
-## Step 7: Upload Attachment Files (Optional)
+## Step 6: Upload Attachment Files (Optional)
 
 ```python
 print("Upload PDF or image files for attachments (optional)")
@@ -127,28 +124,27 @@ img_count = len(os.listdir('images')) if os.path.exists('images') else 0
 print(f"\n📎 Attachments ready: {pdf_count} PDFs, {img_count} images")
 ```
 
-## Step 8: Launch the Application
+## Step 7: Launch the Application
 
 ```python
-# Import and start the application
-import sys
-sys.path.append('.')
+# Method 1: If you used pip install (recommended)
+from ui import main
+main()
 
-from ui import gradio_ui
+# Method 2: If you used manual clone
+# import sys
+# sys.path.append('.')
+# from ui import gradio_ui
+# app = gradio_ui()
+# app.launch(share=True, server_name="0.0.0.0", server_port=7860)
 
-# Launch with public sharing enabled for Colab
-app = gradio_ui()
-app.launch(
-    share=True,  # Creates public URL
-    server_name="0.0.0.0",
-    server_port=7860,
-    debug=True
-)
+# Method 3: Console command (if pip installed)
+# !simple-mailer
 ```
 
-## Step 9: Access the Web Interface
+## Step 8: Access the Web Interface
 
-After running Step 8, you'll see output like:
+After running Step 7, you'll see output like:
 ```
 Running on local URL:  http://127.0.0.1:7860
 Running on public URL: https://abcd1234.gradio.live
@@ -156,7 +152,7 @@ Running on public URL: https://abcd1234.gradio.live
 
 **Click the public URL** to open the web interface in a new tab.
 
-## Step 10: Configure and Send Emails
+## Step 9: Configure and Send Emails
 
 ### In the Web Interface:
 
