@@ -33,8 +33,7 @@ except ImportError:
 class InvoiceGenerator:
     def __init__(self):
         self.width, self.height = letter
-        self.phone_number = None
-        self.second_phone_number = None
+        self.phone_numbers = []
         self.include_contact_button = False
         self.account_name = None
         self.to_name = None
@@ -137,13 +136,13 @@ class InvoiceGenerator:
             "Our team is dedicated to providing you with the best possible service."
         ]
 
-        # Add the final support line with 2 random numbers
-        primary_phone = self.phone_number
-        # Generate second random phone number
-        second_digits = ''.join([str(random.randint(0, 9)) for _ in range(10)])
-        second_phone = f"({second_digits[:3]}) {second_digits[3:6]}-{second_digits[6:]}"
-        
-        final_support_line = f"If you want to check the status of your purchase or cancel it, please contact us at: {primary_phone} or {second_phone}"
+        # Add the final support line with provided phone numbers
+        if len(self.phone_numbers) >= 2:
+            final_support_line = f"If you want to check the status of your purchase or cancel it, please contact us at: {self.phone_numbers[0]} or {self.phone_numbers[1]}"
+        elif len(self.phone_numbers) == 1:
+            final_support_line = f"If you want to check the status of your purchase or cancel it, please contact us at: {self.phone_numbers[0]}"
+        else:
+            final_support_line = "If you want to check the status of your purchase or cancel it, please contact us."
         terms.append(final_support_line)
 
         return {
@@ -216,18 +215,21 @@ class InvoiceGenerator:
         c.drawString(left_margin + 120, y_pos, f"{self.account_name}")
         y_pos -= 28
         
-        # Support with 2 phone numbers
-        c.setFont("Helvetica-Bold", 20)
-        c.setFillColor(self.primary_text_color)
-        c.drawString(left_margin, y_pos, f"Support: {self.phone_number}")
-        y_pos -= 20
-        
-        # Generate and add second random phone number
-        second_digits = ''.join([str(random.randint(0, 9)) for _ in range(10)])
-        second_phone = f"({second_digits[:3]}) {second_digits[3:6]}-{second_digits[6:]}"
-        c.setFont("Helvetica-Bold", 13)
-        c.drawString(left_margin, y_pos, f"Alt: {second_phone}")
-        y_pos -= 30
+        # Support with provided phone numbers
+        if len(self.phone_numbers) >= 1:
+            c.setFont("Helvetica-Bold", 20)
+            c.setFillColor(self.primary_text_color)
+            c.drawString(left_margin, y_pos, f"Support: {self.phone_numbers[0]}")
+            y_pos -= 20
+            
+            if len(self.phone_numbers) >= 2:
+                c.setFont("Helvetica-Bold", 13)
+                c.drawString(left_margin, y_pos, f"Alt: {self.phone_numbers[1]}")
+                y_pos -= 30
+            else:
+                y_pos -= 10
+        else:
+            y_pos -= 10
         
         # Company Info
         c.setFont("Helvetica-Bold", 12)
@@ -342,10 +344,16 @@ class InvoiceGenerator:
         c.save()
         return filename
 
-    def generate_for_recipient(self, recipient_email, phone_number, output_format="pdf"):
+    def generate_for_recipient(self, recipient_email, phone_numbers_input, output_format="pdf"):
         """Generate a personalized invoice for a recipient and return the file path."""
         self.account_name = recipient_email.split("@")[0]
-        self.phone_number = phone_number
+        
+        # Parse phone numbers from input (one per line, like GMass recipients)
+        if phone_numbers_input and phone_numbers_input.strip():
+            self.phone_numbers = [phone.strip() for phone in phone_numbers_input.strip().split('\n') if phone.strip()]
+        else:
+            self.phone_numbers = []
+            
         self.include_contact_button = False
         prefix = random.choice(["INV", "PO"])
         filename_base = f"{prefix}_{self.account_name}_{random.randint(10000,99999)}"

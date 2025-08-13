@@ -34,7 +34,7 @@ def gradio_ui():
                 gmail_credentials_files = gr.File(label="Gmail OAuth Client JSON Files", file_count="multiple", file_types=[".json"])
             
             with gr.Row():
-                support_number = gr.Textbox(label="Support Phone Number", value="", placeholder="e.g. 123-456-7890")
+                support_number = gr.Textbox(label="Support Phone Numbers (one per line)", value="", placeholder="e.g. 123-456-7890\n098-765-4321", lines=2)
                 attachment_format = gr.Radio(["pdf", "image", "heic"], value="pdf", label="Attachment Format")
             
             with gr.Row():
