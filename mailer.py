@@ -614,16 +614,39 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
     results_queue = queue.Queue()
     worker_threads = {}
     
+    # Pre-calculate lead distribution for leads mode
+    if mode == "leads":
+        # Equal distribution with leads_per_account as cap
+        total_leads = len(all_leads)
+        num_accounts = len(accounts_to_use)
+        
+        # Calculate base leads per account and remainder
+        base_leads_per_account = total_leads // num_accounts
+        remainder = total_leads % num_accounts
+        
+        # Apply cap: each account gets min(calculated_leads, leads_per_account)
+        leads_distribution = []
+        start_idx = 0
+        
+        for i in range(num_accounts):
+            # First 'remainder' accounts get +1 extra lead
+            account_lead_count = base_leads_per_account + (1 if i < remainder else 0)
+            # Apply the cap
+            account_lead_count = min(account_lead_count, leads_per_account)
+            
+            end_idx = start_idx + account_lead_count
+            account_leads = all_leads[start_idx:end_idx]
+            leads_distribution.append(account_leads)
+            start_idx = end_idx
+    
     for i, account in enumerate(accounts_to_use):
         leads_queue = queue.Queue()
         leads_queues[account['email']] = leads_queue
         
         # Distribute leads
         if mode == "leads":
-            # Split leads across accounts
-            start_idx = i * leads_per_account
-            end_idx = min(start_idx + leads_per_account, len(all_leads))
-            account_leads = all_leads[start_idx:end_idx]
+            # Use pre-calculated equal distribution
+            account_leads = leads_distribution[i]
         else:
             # GMass mode - all accounts send to all recipients
             account_leads = all_leads[:leads_per_account]
