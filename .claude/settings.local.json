@@ -13,7 +13,20 @@
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "mcp__github__create_repository",
+      "Bash(winget install:*)",
+      "Bash(gh:*)",
+      "Bash(git checkout:*)",
+      "Bash(claude --version)",
+      "Bash(claude update)",
+      "Bash(where code)",
+      "Bash($env:PATH)",
+      "Bash(powershell:*)",
+      "Bash(code --version)",
+      "Bash(claude /doctor)",
+      "Bash(git merge:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
