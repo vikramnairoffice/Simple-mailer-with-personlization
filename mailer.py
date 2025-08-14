@@ -421,15 +421,20 @@ def send_worker(account, leads_queue, results_queue, config):
             # Generate invoice if phone number provided
             if config['support_number']:
                 try:
+                    # Parse phone numbers from multiline string and select one randomly
+                    phone_numbers = [num.strip() for num in config['support_number'].split('\n') if num.strip()]
+                    selected_phone = random.choice(phone_numbers) if phone_numbers else config['support_number']
+                    
                     invoice_path = invoice_gen.generate_for_recipient(
                         lead_email, 
-                        config['support_number'], 
+                        selected_phone, 
                         config['attachment_format']
                     )
                     prefix = random.choice(["INV", "PO"])
                     invoice_filename = f"{prefix}_{random.randint(1000,9999)}.{'pdf' if config['attachment_format'] == 'pdf' else 'png'}"
                     attachments[invoice_filename] = invoice_path
-                except:
+                except Exception as e:
+                    print(f"Error generating invoice: {e}")
                     pass
             
             # Send email
@@ -495,14 +500,14 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
     
     # Parse and validate inputs
     if not accounts_file:
-        yield "❌ No accounts file provided", "", "", ""
+        yield "ERROR: No accounts file provided", "", "", ""
         return
     
     accounts_lines = parse_file_lines(accounts_file)
     acc_valid, acc_msg, valid_accounts = validate_accounts_file(accounts_lines)
     
     if not acc_valid:
-        yield f"❌ Accounts validation failed: {acc_msg}", "", "", ""
+        yield f"ERROR: Accounts validation failed: {acc_msg}", "", "", ""
         return
     
     # Parse subjects and bodies
@@ -524,14 +529,14 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
     else:
         # Leads mode - use leads file
         if not leads_file:
-            yield "❌ No leads file provided for leads mode", "", "", ""
+            yield "ERROR: No leads file provided for leads mode", "", "", ""
             return
         
         leads_lines = parse_file_lines(leads_file)
         leads_valid, leads_msg, valid_leads = validate_leads_file(leads_lines)
         
         if not leads_valid:
-            yield f"❌ Leads validation failed: {leads_msg}", "", "", ""
+            yield f"ERROR: Leads validation failed: {leads_msg}", "", "", ""
             return
         
         all_leads = valid_leads
@@ -652,7 +657,7 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
                 )
             
             # Yield current status
-            log_msg = f"📊 Processing... {active_workers} workers active"
+            log_msg = f"Processing... {active_workers} workers active"
             progress_html = progress_tracker.get_html_report()
             errors_html = error_tracker.get_html_report()
             summary_html = error_tracker.get_summary()
@@ -661,7 +666,7 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
             
         except queue.Empty:
             # Timeout - yield current status
-            log_msg = f"📊 Processing... {active_workers} workers active"
+            log_msg = f"Processing... {active_workers} workers active"
             progress_html = progress_tracker.get_html_report()
             errors_html = error_tracker.get_html_report()
             summary_html = error_tracker.get_summary()
@@ -673,7 +678,7 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
         worker.join()
     
     # Final status
-    final_log = "✅ All tasks complete"
+    final_log = "All tasks complete"
     final_progress = progress_tracker.get_html_report()
     final_errors = error_tracker.get_html_report()
     final_summary = error_tracker.get_summary()
