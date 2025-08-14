@@ -30,7 +30,8 @@
       "Bash(git push:*)",
       "Bash(git config:*)",
       "Bash(timeout:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "mcp__playwright__browser_navigate"
     ],
     "deny": [],
     "ask": []

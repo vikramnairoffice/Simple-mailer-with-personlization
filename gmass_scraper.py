@@ -17,6 +17,67 @@ except ImportError:
 gmass_results = {}
 selected_accounts_for_real_send = []
 
+def generate_gmass_urls(sender_emails):
+    """Generate GMass URLs for sender emails without scraping"""
+    if not sender_emails:
+        return {}
+    
+    urls = {}
+    for email in sender_emails:
+        if '@' not in email:
+            raise ValueError(f"Invalid email format: {email}")
+        
+        # Extract username part before @ for GMass URL
+        username = email.split('@')[0]
+        encoded_username = urllib.parse.quote(username)
+        url = f"https://www.gmass.co/inbox?q={encoded_username}"
+        urls[email] = url
+    
+    return urls
+
+def format_gmass_urls_display(urls):
+    """Format GMass URLs as clickable HTML display"""
+    if not urls:
+        return "<p>No URLs to display</p>"
+    
+    html = """
+    <div style='background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;'>
+        <h4>📊 GMass URLs Generated</h4>
+        <p>Check deliverability manually or click 'Get Scores' to fetch automatically:</p>
+        <table style='width:100%; border-collapse: collapse; font-family: monospace;'>
+            <thead>
+                <tr style='background: #e9ecef;'>
+                    <th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>Sender Account</th>
+                    <th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>GMass URL</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    
+    for email, url in urls.items():
+        html += f"""
+        <tr>
+            <td style='border: 1px solid #ddd; padding: 8px;'>{email}</td>
+            <td style='border: 1px solid #ddd; padding: 8px;'>
+                <a href='{url}' target='_blank' style='color: #0066cc; text-decoration: none;'>{url}</a>
+            </td>
+        </tr>
+        """
+    
+    html += """
+            </tbody>
+        </table>
+        <p style='margin-top: 10px; color: #6c757d; font-size: 0.9em;'>
+            💡 <strong>Options:</strong><br>
+            • Check URLs manually by clicking the links above, OR<br>
+            • Wait 2-3 minutes for emails to process, then click 'Get Scores' for automatic Playwright scraping<br>
+            • Scraping is completely optional - you can proceed without it
+        </p>
+    </div>
+    """
+    
+    return html
+
 def fetch_gmass_scores(sender_emails):
     """Scrape GMass deliverability scores for multiple senders"""
     if not PLAYWRIGHT_AVAILABLE:
@@ -186,10 +247,10 @@ def format_gmass_results_table(results):
     
     return html
 
-def run_gmass_test_only(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
-                        include_pdfs, include_images, support_number, attachment_format, 
-                        use_gmail_api, gmail_credentials_files, sender_name_type="business"):
-    """Run GMass test and show URL for manual checking"""
+def run_gmass_test_with_urls_only(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
+                                include_pdfs, include_images, support_number, attachment_format, 
+                                use_gmail_api, gmail_credentials_files, sender_name_type="business"):
+    """Stage 1: Send GMass test emails and return URLs only (no Playwright scraping)"""
     if mode != "gmass":
         return "❌ Please set mode to 'gmass' for deliverability testing", ""
     
@@ -203,11 +264,14 @@ def run_gmass_test_only(accounts_file, mode, subjects_text, bodies_text, gmass_r
     if not acc_valid:
         return f"❌ Accounts file error: {acc_msg}", ""
     
-    # Run the GMass test (existing logic)
+    # Run the GMass test (sending emails)
     try:
-        # Use existing main_worker but limit to small test
+        # Get sender emails for URL generation
+        sender_emails = [acc['email'] for acc in valid_accounts]
+        
+        # Use existing main_worker - ensure each SMTP sends to ALL GMass recipients
         results_generator = main_worker(
-            accounts_file, None, 15, len(valid_accounts), "gmass", 
+            accounts_file, None, len(gmass_recipients_text.strip().split('\n')), len(valid_accounts), "gmass", 
             subjects_text, bodies_text, gmass_recipients_text,
             include_pdfs, include_images, support_number, attachment_format,
             use_gmail_api, gmail_credentials_files, sender_name_type
@@ -220,18 +284,13 @@ def run_gmass_test_only(accounts_file, mode, subjects_text, bodies_text, gmass_r
             if "All tasks complete" in log_html:
                 break
         
-        # Show GMass URL for manual checking
-        gmass_url = "https://www.gmass.co/inbox"
-        url_message = f"""
-        <div style='background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0;'>
-            <h4>✅ Test emails sent to GMass!</h4>
-            <p>Check your deliverability results manually at:</p>
-            <p><a href='{gmass_url}' target='_blank' style='font-size: 16px; font-weight: bold; color: #0066cc;'>{gmass_url}</a></p>
-            <p>Wait 2-3 minutes for emails to process, then click 'Get Scores' button below to fetch results automatically.</p>
-        </div>
-        """
+        # Generate URLs immediately (no Playwright scraping)
+        gmass_urls = generate_gmass_urls(sender_emails)
+        urls_display = format_gmass_urls_display(gmass_urls)
         
-        return f"✅ GMass test completed. Check URL below.\n{final_log}\n{url_message}", ""
+        status_message = f"✅ GMass test emails sent successfully! URLs generated for {len(sender_emails)} accounts."
+        
+        return status_message, urls_display
         
     except Exception as e:
         return f"❌ Error during GMass test: {e}", ""

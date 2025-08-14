@@ -13,9 +13,8 @@ import queue
 from datetime import datetime
 import tempfile
 import glob
-from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, SEND_DELAY_SECONDS, PDF_ATTACHMENT_DIR, IMAGE_ATTACHMENT_DIR, SENDER_NAME_TYPES, DEFAULT_SENDER_NAME_TYPE
+from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, SEND_DELAY_SECONDS, PDF_ATTACHMENT_DIR, IMAGE_ATTACHMENT_DIR, SENDER_NAME_TYPES, DEFAULT_SENDER_NAME_TYPE, generate_sender_name
 from invoice import InvoiceGenerator
-from sender_names import generate_sender_name
 
 try:
     from google.auth.transport.requests import Request
@@ -29,61 +28,12 @@ except ImportError:
 
 # Gmail API setup
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-TOKEN_DIR = './gmail_tokens'
-
-if not os.path.exists(TOKEN_DIR):
-    os.makedirs(TOKEN_DIR)
-
-# Gmail API Helper Functions
-def _safe_email_tag(email):
-    """Convert email to safe filename format"""
-    return email.replace('@', '_at_').replace('.', '_')
-
-def _token_path_for(email):
-    """Get token file path for email under Drive directory"""
-    safe_email = _safe_email_tag(email)
-    return os.path.join(TOKEN_DIR, f"token_{safe_email}.json")
-
-def _build_service_from_token(email):
-    """Build Gmail service from existing token file, returns None if token missing"""
-    if not GMAIL_API_AVAILABLE:
-        return None
-        
-    token_path = _token_path_for(email)
-    if not os.path.exists(token_path):
-        return None
-        
-    try:
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                # Save refreshed token
-                with open(token_path, 'w') as token:
-                    token.write(creds.to_json())
-            else:
-                return None
-        return build('gmail', 'v1', credentials=creds)
-    except Exception as e:
-        print(f"Error loading token for {email}: {e}")
-        return None
-
-def _oauth_console_login(creds_json_path):
-    """Run console OAuth flow and return credentials"""
-    if not GMAIL_API_AVAILABLE:
-        raise Exception("Gmail API libraries not available")
-        
-    flow = InstalledAppFlow.from_client_secrets_file(creds_json_path, SCOPES)
-    # Use console flow to avoid browser pollution
-    creds = flow.run_console()
-    return creds
 
 def _ensure_service_for_sender(creds_json_path, email_hint=None, credential_files=None):
-    """Ensure Gmail service exists for sender, handling OAuth if needed"""
+    """Ensure Gmail service exists for sender using new authentication manager"""
     if not GMAIL_API_AVAILABLE:
         return None
     
-    # Try new authentication manager first
     try:
         from gmail_auth_manager import gmail_auth_manager
         
@@ -96,40 +46,18 @@ def _ensure_service_for_sender(creds_json_path, email_hint=None, credential_file
             service = gmail_auth_manager.get_service_for_account(email_hint)
             if service:
                 return service
+            else:
+                print(f"Gmail API service not available for {email_hint}. Please authenticate via UI first.")
+                return None
         
-        # If new system fails, fallback to old system
-        print(f"New auth system failed for {email_hint}, falling back to legacy auth...")
+        return None
         
     except ImportError:
-        print("New authentication system not available, using legacy auth...")
+        print("Gmail authentication system not available. Please ensure gmail_auth_manager.py is present.")
+        return None
     except Exception as e:
-        print(f"Error with new authentication system: {e}, falling back to legacy auth...")
-        
-    # Legacy authentication system (fallback)
-    # First try to load existing token for email_hint
-    if email_hint:
-        service = _build_service_from_token(email_hint)
-        if service:
-            return service
-    
-    # Run console OAuth flow
-    print(f"Gmail API authentication needed for {email_hint or 'account'}")
-    print("Please follow the console prompts to authorize access...")
-    
-    creds = _oauth_console_login(creds_json_path)
-    
-    # Build service to get actual email
-    service = build('gmail', 'v1', credentials=creds)
-    profile = service.users().getProfile(userId='me').execute()
-    actual_email = profile['emailAddress']
-    
-    # Save token with actual email
-    token_path = _token_path_for(actual_email)
-    with open(token_path, 'w') as token:
-        token.write(creds.to_json())
-    
-    print(f"Token saved for {actual_email}")
-    return service
+        print(f"Error with Gmail authentication system: {e}")
+        return None
 
 def _gmail_api_send(service, sender, to_addr, subject, body_text, attachments=None, sender_name=None):
     """Send email via Gmail API"""
@@ -672,8 +600,8 @@ def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_us
             # Use pre-calculated equal distribution
             account_leads = leads_distribution[i]
         else:
-            # GMass mode - all accounts send to all recipients
-            account_leads = all_leads[:leads_per_account]
+            # GMass mode - ALL accounts send to ALL recipients (no limit)
+            account_leads = all_leads
         
         # Add leads to queue
         for lead in account_leads:

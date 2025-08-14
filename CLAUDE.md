@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a modular Python-based email marketing application with GMass deliverability testing integration. The application sends personalized emails with dynamic invoice attachments and provides comprehensive deliverability analysis through GMass scraping. It supports multi-threading, real-time progress tracking, and both Gmail API and SMTP protocols.
+This is a modular Python-based email marketing application with GMass deliverability testing integration and advanced Gmail API authentication. The application sends personalized emails with dynamic invoice attachments and provides comprehensive deliverability analysis through GMass scraping. It supports multi-threading, real-time progress tracking, and both Gmail API and SMTP protocols with enhanced sender name generation and authentication management.
 
 ## Architecture
 
@@ -26,6 +26,7 @@ This is a modular Python-based email marketing application with GMass deliverabi
    - Multi-threaded sending with worker pools
    - Rate limiting and quota management
    - Attachment support for PDFs and images
+   - Integration with new Gmail authentication system
 
 3. **Error Tracking System** (`mailer.py`) - Advanced error categorization and reporting
    - AccountErrorTracker class with 12+ error types (AUTH_FAILED, RATE_LIMITED, GMAIL_API_ERROR, etc.)
@@ -43,29 +44,61 @@ This is a modular Python-based email marketing application with GMass deliverabi
    - Account selection based on deliverability scores
    - Integration with main sending workflow
 
-6. **Gradio Web Interface** (`ui.py`) - Advanced web UI with multiple tabs
-   - Configuration tab for subjects, bodies, and GMass recipients
-   - Send emails tab with file uploads and statistics
-   - GMass testing integration with results table
-   - Real-time progress monitoring and error displays
+6. **Gmail Authentication System** (`gmail_auth_manager.py`, `gmail_auth_ui.py`) - **NEW ENHANCED SYSTEM**
+   - **GmailAuthManager**: Multi-credential OAuth2 authentication management
+   - Support for multiple credential files per project
+   - Per-account credential mapping and token storage
+   - Automatic environment detection (Colab vs Local)
+   - Incognito browser launching for secure authentication
+   - Token refresh and validation
+   - Email auto-discovery from OAuth responses
+   - **Gmail Auth UI**: Interactive Gradio interface for authentication
+   - Visual authentication status tables with real-time updates
+   - One-click authentication buttons with JavaScript integration
+   - Quick authentication flow with credential-only authentication
+   - Credential file upload and management
 
-7. **Content Management** (`content.py`) - Centralized configuration
+7. **Enhanced Content Management** (`content.py`) - **UPDATED WITH SENDER NAMES**
    - Default subjects, bodies, and GMass recipients
    - Attachment directory configurations
    - Send delay settings
+   - **Sender Name Generation System**:
+     - Business names: FirstName + RandomLetters + BusinessWord + RandomLetters + Suffix
+     - Personal names: FirstName + RandomLetters (initials format)
+     - Faker library integration for realistic name generation
+     - Configurable name types via UI
+
+8. **Gradio Web Interface** (`ui.py`) - **ENHANCED WITH NEW FEATURES**
+   - Configuration tab for subjects, bodies, and GMass recipients
+   - Send emails tab with file uploads and statistics  
+   - **Integrated Gmail authentication interface**
+   - GMass testing integration with results table
+   - Real-time progress monitoring and error displays
+   - **Sender name type selection (business/personal)**
+   - **Enhanced Gmail API controls and status**
 
 ### File Structure
 ```
-mailer.py              # Main email sending engine with multi-threading
-invoice.py             # PDF/image invoice generation
-ui.py                 # Gradio web interface
-gmass_scraper.py      # GMass deliverability testing and scraping
-content.py            # Default content and configuration
-test_png_generation.py # Invoice generation testing
-generated_invoices/   # Generated invoice files (auto-created)
-gmail_tokens/         # Gmail OAuth tokens (auto-created)
-pdfs/                 # PDF attachments (user-created)
-images/               # Image attachments (user-created)
+mailer.py                 # Main email sending engine with multi-threading
+invoice.py                # PDF/image invoice generation
+ui.py                    # Enhanced Gradio web interface with Gmail auth
+gmass_scraper.py         # GMass deliverability testing and scraping
+content.py               # Content management with sender name generation
+gmail_auth_manager.py    # Gmail OAuth2 authentication manager (NEW)
+gmail_auth_ui.py         # Gradio UI components for Gmail auth (NEW)  
+gmail_auth_js.py         # JavaScript helpers for auth UI (NEW)
+setup.py                 # Package installation configuration
+requirements.txt         # Python dependencies
+test/                    # Test files directory
+  ├── test_cleanup.py
+  ├── test_distribution.py
+  ├── test_gmail_auth.py
+  ├── test_gmail_auth_console.py
+  └── test_sender_names.py
+generated_invoices/      # Generated invoice files (auto-created)
+gmail_tokens/           # Gmail OAuth tokens (auto-created)
+pdfs/                   # PDF attachments (user-created)
+images/                 # Image attachments (user-created)
 ```
 
 ## Development Commands
@@ -82,16 +115,42 @@ gradio_ui().launch()
 
 ### Required Dependencies
 ```bash
+# Core dependencies
 pip install gradio reportlab pymupdf faker playwright
-pip install google-auth-oauthlib google-api-python-client  # For Gmail API
-playwright install chromium  # For GMass scraping
+
+# Gmail API support
+pip install google-auth-oauthlib google-api-python-client
+
+# Browser automation for GMass scraping
+playwright install chromium
+
+# Or install from requirements.txt
+pip install -r requirements.txt
 ```
 
-### Gmail API Setup (Optional)
-1. Create Google Cloud project and enable Gmail API
-2. Download OAuth2 client credentials JSON file
-3. Upload credentials file in the UI when using Gmail API mode
-4. Tokens will be automatically saved in `gmail_tokens/` directory
+### Gmail API Setup (Enhanced Authentication System)
+1. **Create Google Cloud Project**:
+   - Enable Gmail API in Google Cloud Console
+   - Create OAuth2 credentials (Desktop Application type)
+   - Download credential JSON file(s)
+
+2. **Upload Credentials in Application**:
+   - Use the new Gmail authentication interface in the web UI
+   - Upload multiple credential JSON files if needed
+   - Each project can have separate credentials
+
+3. **Authenticate Accounts**:
+   - **Quick Auth**: Select credential file → Click "Authenticate" → Email auto-discovered
+   - **Per-Account Auth**: Manual email + credential pairing
+   - Authentication opens in incognito browser (local) or shows manual flow (Colab)
+   - Tokens automatically saved in `gmail_tokens/` with account-credential mapping
+
+4. **Authentication Features**:
+   - Real-time authentication status table
+   - One-click re-authentication
+   - Multiple credential support per account
+   - Automatic token refresh
+   - Environment detection (Colab vs Local)
 
 ## Key Configuration
 
@@ -113,9 +172,11 @@ One email address per line
 ### Default Settings
 - Send delay: 4.5 seconds between emails
 - Invoice generation: Personalized with recipient email as account name
-- Attachment format: PDF or high-quality PNG (135 DPI)
+- Attachment format: PDF, PNG, or HEIC (135 DPI for images)
 - Multi-threading: One worker thread per account
-- Gmail API: Optional OAuth2 integration for Gmail accounts
+- Gmail API: Enhanced OAuth2 system with multi-credential support
+- Sender names: Configurable business/personal name generation
+- Authentication: Automatic incognito browser launching
 
 ## Error Handling
 
@@ -142,8 +203,19 @@ Each error type includes specific solutions and recovery suggestions with HTML-f
 6. Monitor real-time progress and error tracking
 
 ### Test Files
-- `test_png_generation.py` - Tests invoice generation functionality
+Located in `test/` directory:
+- `test_distribution.py` - Tests lead distribution algorithms
+- `test_gmail_auth.py` - Tests Gmail authentication functionality  
+- `test_gmail_auth_console.py` - Console-based Gmail auth testing
+- `test_sender_names.py` - Tests sender name generation
+- `test_cleanup.py` - Cleanup and maintenance testing
 - Use small lead lists (5-10 emails) for initial testing
+
+### Enhanced Testing Process
+1. **Authentication Testing**: Use test files to verify Gmail API integration
+2. **Sender Name Testing**: Validate business/personal name generation
+3. **Distribution Testing**: Verify equal lead distribution with caps
+4. **GMass Integration**: Test deliverability scoring and account selection
 
 ## GMass Integration
 
@@ -158,3 +230,46 @@ Each error type includes specific solutions and recovery suggestions with HTML-f
 - Score = Inbox count + (0.6 × Promotions count)
 - Accounts with inbox ≥ 1 are pre-selected
 - Results displayed in interactive table with selection checkboxes
+
+## Recent Enhancements
+
+### Gmail Authentication System (Major Update)
+- **Multi-credential support**: Handle multiple OAuth2 credential files
+- **Environment auto-detection**: Seamless Colab vs Local environment handling
+- **Incognito browser automation**: Secure authentication without polluting browser
+- **Real-time status tracking**: Visual authentication status with one-click actions
+- **Email auto-discovery**: Authenticate with credential file only, email discovered automatically
+- **Enhanced token management**: Per-account per-credential token storage and refresh
+
+### Sender Name Generation (New Feature)
+- **Business names**: Realistic company-style names with suffixes (Foundation, Corp, LLC, etc.)
+- **Personal names**: Individual-style names with initials
+- **Faker integration**: Use Faker library for realistic name generation
+- **UI integration**: Configurable sender name types in Gradio interface
+
+### Enhanced UI Features
+- **Integrated Gmail authentication interface** with visual status tables
+- **Quick authentication workflow** with credential-only flow
+- **Improved error handling** and user feedback
+- **Real-time authentication status updates**
+- **Multi-credential file upload and management**
+
+### Development Environment Improvements
+- **Test directory structure** with organized test files
+- **Setup.py configuration** for package installation
+- **Requirements.txt** for dependency management
+- **Enhanced error tracking** and debugging capabilities
+
+## Security Considerations
+
+### Authentication Security
+- **Incognito browser usage**: Prevents OAuth token pollution in main browser
+- **Token isolation**: Separate token files per account-credential combination
+- **Automatic token refresh**: Secure token lifecycle management
+- **Environment-specific flows**: Different auth flows for Colab vs Local environments
+
+### Email Security
+- **Sender name randomization**: Reduces detection patterns
+- **Rate limiting**: Built-in delays to prevent spam classification
+- **Error categorization**: Proper handling of authentication and delivery failures
+- **Attachment randomization**: Random PDF/image selection for variety
