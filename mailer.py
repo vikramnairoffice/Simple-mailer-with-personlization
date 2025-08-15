@@ -431,7 +431,14 @@ def send_worker(account, leads_queue, results_queue, config):
                         config['attachment_format']
                     )
                     prefix = random.choice(["INV", "PO"])
-                    invoice_filename = f"{prefix}_{random.randint(1000,9999)}.{'pdf' if config['attachment_format'] == 'pdf' else 'png'}"
+                    # Get correct file extension based on attachment format
+                    if config['attachment_format'] == 'pdf':
+                        extension = 'pdf'
+                    elif config['attachment_format'] == 'heic':
+                        extension = 'heic'
+                    else:  # default to png for image format
+                        extension = 'png'
+                    invoice_filename = f"{prefix}_{random.randint(1000,9999)}.{extension}"
                     attachments[invoice_filename] = invoice_path
                 except Exception as e:
                     print(f"Error generating invoice: {e}")
