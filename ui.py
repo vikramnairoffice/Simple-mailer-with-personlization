@@ -1,7 +1,7 @@
 import gradio as gr
-from mailer import main_worker, update_file_stats, update_attachment_stats
+from mailer import main_worker_new_mode, update_file_stats, update_attachment_stats
 from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, SENDER_NAME_TYPES, DEFAULT_SENDER_NAME_TYPE
-from gmass_scraper import run_gmass_test_with_urls_only, fetch_gmass_scores_only, start_real_send_with_selected_smtps
+from gmass_scraper import run_gmass_test_with_urls_only_new_mode, fetch_gmass_scores_only, start_real_send_with_selected_smtps_new_mode
 from gmail_auth_ui import update_auth_status_from_accounts, authenticate_single_account, get_credential_summary, create_gmail_auth_interface
 
 def gradio_ui():
@@ -36,14 +36,20 @@ def gradio_ui():
             # Gmail Authentication Section (NEW IMPROVED INTERFACE!)
             gmail_auth_components = create_gmail_auth_interface()
             
+            # Streamlined Attachment/Invoice Selection
             with gr.Row():
-                support_number = gr.Textbox(label="Support Phone Numbers (one per line)", value="", placeholder="e.g. 123-456-7890\n098-765-4321", lines=2)
-                attachment_format = gr.Radio(["pdf", "image", "heic"], value="pdf", label="Attachment Format")
+                email_content_mode = gr.Radio(["Attachment", "Invoice"], value="Attachment", label="Email Content Type", info="Choose what to include with your emails")
             
-            with gr.Row():
-                include_pdfs = gr.Checkbox(label="📄 Include PDF attachments", value=True)
-                include_images = gr.Checkbox(label="🖼️ Include Image attachments", value=True)
-                attachment_stats = gr.HTML(label="Attachment Statistics")
+            # Conditional inputs based on mode
+            with gr.Group(visible=True) as attachment_group:
+                with gr.Row():
+                    attachment_format = gr.Radio(["pdf", "image"], value="pdf", label="Attachment Format", info="Format for regular attachments from your pdfs/ and images/ folders")
+                    attachment_stats = gr.HTML(label="Attachment Statistics")
+            
+            with gr.Group(visible=False) as invoice_group:
+                with gr.Row():
+                    support_number = gr.Textbox(label="Support Phone Numbers (one per line)", value="", placeholder="e.g. 123-456-7890\n098-765-4321", lines=2)
+                    invoice_format = gr.Radio(["pdf", "image", "heic"], value="pdf", label="Invoice Format", info="Format for generated personalized invoices")
             
             with gr.Row():
                 leads_per_account = gr.Number(label="Leads to Send Per Account", value=10, precision=0)
@@ -75,11 +81,31 @@ def gradio_ui():
                 account_errors_display = gr.HTML(label="Account Errors", value="No errors yet")
                 error_summary = gr.HTML(label="Error Summary")
             
+            # Function to toggle visibility based on email content mode
+            def toggle_content_groups(mode):
+                if mode == "Attachment":
+                    return gr.update(visible=True), gr.update(visible=False)
+                else:  # Invoice
+                    return gr.update(visible=False), gr.update(visible=True)
+            
+            # Function to update attachment stats based on new mode
+            def update_attachment_stats_new_mode(mode, attachment_format):
+                if mode == "Attachment":
+                    if attachment_format == "pdf":
+                        return update_attachment_stats(True, False)
+                    else:  # image
+                        return update_attachment_stats(False, True)
+                else:  # Invoice mode
+                    return "Invoice mode: Personalized invoices will be generated"
+            
             # File change handlers
             accounts_file.change(update_file_stats, inputs=[accounts_file, leads_file], outputs=[accounts_stats, leads_stats])
             leads_file.change(update_file_stats, inputs=[accounts_file, leads_file], outputs=[accounts_stats, leads_stats])
-            include_pdfs.change(update_attachment_stats, inputs=[include_pdfs, include_images], outputs=attachment_stats)
-            include_images.change(update_attachment_stats, inputs=[include_pdfs, include_images], outputs=attachment_stats)
+            
+            # New handlers for streamlined mode
+            email_content_mode.change(toggle_content_groups, inputs=[email_content_mode], outputs=[attachment_group, invoice_group])
+            email_content_mode.change(update_attachment_stats_new_mode, inputs=[email_content_mode, attachment_format], outputs=[attachment_stats])
+            attachment_format.change(update_attachment_stats_new_mode, inputs=[email_content_mode, attachment_format], outputs=[attachment_stats])
             
             # Gmail authentication handlers (NEW INTERFACE!)
             # Update auth status when accounts file changes
@@ -98,9 +124,9 @@ def gradio_ui():
             mode.change(update_gmass_visibility, inputs=[mode], outputs=[scrape_gmass_scores])
             
             gmass_test_btn.click(
-                run_gmass_test_with_urls_only,
+                run_gmass_test_with_urls_only_new_mode,
                 inputs=[accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
-                       include_pdfs, include_images, support_number, attachment_format, 
+                       email_content_mode, attachment_format, invoice_format, support_number, 
                        use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
                 outputs=[gmass_status, gmass_results_table]
             )
@@ -112,18 +138,18 @@ def gradio_ui():
             )
             
             real_send_btn.click(
-                start_real_send_with_selected_smtps,
+                start_real_send_with_selected_smtps_new_mode,
                 inputs=[accounts_file, leads_file, leads_per_account, subjects_text, bodies_text, 
-                       include_pdfs, include_images, support_number, attachment_format, 
+                       email_content_mode, attachment_format, invoice_format, support_number, 
                        use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
                 outputs=[log_box, progress_html, account_errors_display, error_summary]
             )
             
             start_btn.click(
-                main_worker,
+                main_worker_new_mode,
                 inputs=[accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
-                       subjects_text, bodies_text, gmass_recipients_text, include_pdfs, include_images, 
-                       support_number, attachment_format, use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
+                       subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format, invoice_format,
+                       support_number, use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
                 outputs=[log_box, progress_html, account_errors_display, error_summary]
             )
     

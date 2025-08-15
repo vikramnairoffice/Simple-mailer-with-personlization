@@ -329,6 +329,16 @@ def update_attachment_stats(include_pdfs, include_images):
     
     return " | ".join(stats)
 
+def convert_mode_to_attachment_flags(email_content_mode, attachment_format):
+    """Convert new streamlined mode to old include_pdfs/include_images format"""
+    if email_content_mode == "Attachment":
+        if attachment_format == "pdf":
+            return True, False  # include_pdfs=True, include_images=False
+        else:  # image
+            return False, True  # include_pdfs=False, include_images=True
+    else:  # Invoice mode
+        return False, False  # include_pdfs=False, include_images=False
+
 def get_random_attachment(include_pdfs, include_images, attachment_format):
     """Get random attachment file"""
     attachments = {}
@@ -499,6 +509,21 @@ def send_worker(account, leads_queue, results_queue, config):
         'message': f"Account {account['email']} completed with {sent_count} emails sent",
         'sent_count': sent_count
     })
+
+def main_worker_new_mode(accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
+                        subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format, invoice_format,
+                        support_number, use_gmail_api, gmail_credentials_files, sender_name_type="business"):
+    """Main worker function with new streamlined attachment/invoice mode"""
+    # Convert new mode to old format
+    include_pdfs, include_images = convert_mode_to_attachment_flags(email_content_mode, attachment_format)
+    
+    # For invoice mode, use invoice_format instead of attachment_format
+    actual_attachment_format = invoice_format if email_content_mode == "Invoice" else attachment_format
+    
+    # Call the original main_worker with converted parameters
+    return main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode,
+                      subjects_text, bodies_text, gmass_recipients_text, include_pdfs, include_images,
+                      support_number, actual_attachment_format, use_gmail_api, gmail_credentials_files, sender_name_type)
 
 def main_worker(accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
                 subjects_text, bodies_text, gmass_recipients_text, include_pdfs, include_images, 

@@ -4,7 +4,7 @@ import re
 import tempfile
 from datetime import datetime
 import urllib.parse
-from mailer import main_worker, parse_file_lines, validate_accounts_file
+from mailer import main_worker, parse_file_lines, validate_accounts_file, convert_mode_to_attachment_flags
 
 try:
     from playwright.sync_api import sync_playwright
@@ -247,6 +247,21 @@ def format_gmass_results_table(results):
     
     return html
 
+def run_gmass_test_with_urls_only_new_mode(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
+                                          email_content_mode, attachment_format, invoice_format, support_number, 
+                                          use_gmail_api, gmail_credentials_files, sender_name_type="business"):
+    """Stage 1: Send GMass test emails with new streamlined mode"""
+    # Convert new mode to old format
+    include_pdfs, include_images = convert_mode_to_attachment_flags(email_content_mode, attachment_format)
+    
+    # For invoice mode, use invoice_format instead of attachment_format
+    actual_attachment_format = invoice_format if email_content_mode == "Invoice" else attachment_format
+    
+    # Call original function
+    return run_gmass_test_with_urls_only(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text,
+                                       include_pdfs, include_images, support_number, actual_attachment_format,
+                                       use_gmail_api, gmail_credentials_files, sender_name_type)
+
 def run_gmass_test_with_urls_only(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
                                 include_pdfs, include_images, support_number, attachment_format, 
                                 use_gmail_api, gmail_credentials_files, sender_name_type="business"):
@@ -321,6 +336,21 @@ def fetch_gmass_scores_only(accounts_file):
         
     except Exception as e:
         return f"❌ Error fetching GMass scores: {e}", ""
+
+def start_real_send_with_selected_smtps_new_mode(accounts_file, leads_file, leads_per_account, 
+                                               subjects_text, bodies_text, email_content_mode, attachment_format, invoice_format,
+                                               support_number, use_gmail_api, gmail_credentials_files, sender_name_type="business"):
+    """Start real send with new streamlined mode"""
+    # Convert new mode to old format
+    include_pdfs, include_images = convert_mode_to_attachment_flags(email_content_mode, attachment_format)
+    
+    # For invoice mode, use invoice_format instead of attachment_format
+    actual_attachment_format = invoice_format if email_content_mode == "Invoice" else attachment_format
+    
+    # Call original function
+    return start_real_send_with_selected_smtps(accounts_file, leads_file, leads_per_account,
+                                             subjects_text, bodies_text, include_pdfs, include_images,
+                                             support_number, actual_attachment_format, use_gmail_api, gmail_credentials_files, sender_name_type)
 
 def start_real_send_with_selected_smtps(accounts_file, leads_file, leads_per_account, 
                                       subjects_text, bodies_text, include_pdfs, include_images, 
