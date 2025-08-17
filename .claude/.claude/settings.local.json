@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "Bash(git -C \"..\" status)",
+      "Bash(git -C \"..\" branch -a)",
+      "Bash(git -C \"..\" remote -v)",
+      "Bash(python:*)",
+      "Bash(pip show:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

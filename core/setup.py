@@ -13,7 +13,6 @@ def parse_requirements():
             'reportlab>=3.6.0',
             'pymupdf>=1.20.0',
             'faker>=15.0.0',
-            'playwright>=1.30.0',
             'google-auth-oauthlib>=0.8.0',
             'google-api-python-client>=2.70.0',
             'requests>=2.25.0',
@@ -44,7 +43,6 @@ setup(
         'ui',
         'mailer',
         'invoice',
-        'gmass_scraper',
         'content',
         'sender_names'
     ],
