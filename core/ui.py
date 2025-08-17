@@ -8,19 +8,19 @@ from mailer import parse_file_lines, validate_accounts_file, convert_mode_to_att
 def send_gmass_test_simple(accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
                           email_content_mode, attachment_format, invoice_format, support_number, 
                           use_gmail_api, gmail_credentials_files, sender_name_type="business"):
-    """Simple GMass test that sends emails and displays URLs in plain text format"""
+    """Simple GMass test that sends emails and displays URLs in DataFrame format"""
     if mode != "gmass":
-        return "❌ Please set mode to 'gmass' for deliverability testing", ""
+        return "Please set mode to 'gmass' for deliverability testing", [["Please set mode to 'gmass'", ""]]
     
     if not accounts_file:
-        return "❌ Please upload accounts file first", ""
+        return "Please upload accounts file first", [["Please upload accounts file", ""]]
     
     # Parse accounts
     accounts_lines = parse_file_lines(accounts_file)
     acc_valid, acc_msg, valid_accounts = validate_accounts_file(accounts_lines)
     
     if not acc_valid:
-        return f"❌ Accounts file error: {acc_msg}", ""
+        return f"Accounts file error: {acc_msg}", [["Accounts file error", acc_msg]]
     
     try:
         # Convert new mode to old format
@@ -47,23 +47,23 @@ def send_gmass_test_simple(accounts_file, mode, subjects_text, bodies_text, gmas
             if "All tasks complete" in log_html:
                 break
         
-        # Generate URLs for manual checking
-        urls_text = "GMass URLs for manual deliverability checking:\n\n"
+        # Generate DataFrame data
+        table_data = []
         for email in sender_emails:
             if '@' in email:
                 username = email.split('@')[0]
                 encoded_username = urllib.parse.quote(username)
                 url = f"https://www.gmass.co/inbox?q={encoded_username}"
-                urls_text += f"{email}: {url}\n"
+                table_data.append([email, url])
+            else:
+                table_data.append([f"{email} (Invalid)", "N/A"])
         
-        urls_text += "\n💡 Visit these URLs manually to check deliverability results."
+        status_message = f"GMass test emails sent successfully! URLs generated for {len(sender_emails)} accounts."
         
-        status_message = f"✅ GMass test emails sent successfully! URLs generated for {len(sender_emails)} accounts."
-        
-        return status_message, urls_text
+        return status_message, table_data
         
     except Exception as e:
-        return f"❌ Error during GMass test: {e}", ""
+        return f"Error during GMass test: {e}", [["Error occurred", str(e)]]
 
 def gradio_ui():
     """Main function to create and return Gradio interface."""
@@ -116,19 +116,23 @@ def gradio_ui():
                 leads_per_account = gr.Number(label="Leads to Send Per Account", value=10, precision=0)
                 num_accounts_to_use = gr.Slider(minimum=1, maximum=50, value=1, step=1, label="Number of Concurrent Accounts to Use")
             
-            mode = gr.Radio(["leads", "gmass"], value="leads", label="Mode", info="Leads Distribution: split leads across accounts. GMass Broadcast: every account sends to all recipients.")
+            mode = gr.Radio(["gmass", "leads"], value="gmass", label="Mode", info="GMass Broadcast: every account sends to all recipients. Leads Distribution: split leads across accounts.")
             
-            with gr.Group():
-                gr.Markdown("""### 📊 GMass URL Preview
-                **Send test emails to GMass recipients and get URLs for manual checking**""")
+            with gr.Group(visible=True) as gmass_preview_group:
+                gr.Markdown("""### GMass URL Preview
+                **URLs will be generated after sending when in GMass mode**""")
                 
-                with gr.Row():
-                    gmass_test_btn = gr.Button("🧪 Send Test Emails to GMass", variant="secondary")
                 
-                gmass_status = gr.Textbox(label="GMass Test Status", value="Ready to send test emails", interactive=False)
-                gmass_urls_display = gr.Textbox(label="GMass URLs", value="URLs will appear here after sending test emails", interactive=False, lines=10)
+                gmass_status = gr.Textbox(label="GMass Status", value="Ready for GMass mode", interactive=False)
+                gmass_urls_display = gr.DataFrame(
+                    headers=["Gmail Account", "GMass URL"],
+                    datatype=["str", "str"],
+                    label="Gmail Accounts & GMass URLs",
+                    value=[["URLs will appear here after sending", ""]],
+                    interactive=False
+                )
             
-            start_btn = gr.Button("📧 Start Sending (Legacy)", variant="secondary")
+            start_btn = gr.Button("📧 Start Sending", variant="primary")
             
             with gr.Row():
                 progress_html = gr.HTML(label="Progress", value="")
@@ -144,6 +148,10 @@ def gradio_ui():
                     return gr.update(visible=True), gr.update(visible=False)
                 else:  # Invoice
                     return gr.update(visible=False), gr.update(visible=True)
+            
+            # Function to toggle GMass preview section based on mode
+            def toggle_gmass_preview(mode):
+                return gr.update(visible=(mode == "gmass"))
             
             # Function to update attachment stats based on new mode
             def update_attachment_stats_new_mode(mode, attachment_format):
@@ -164,6 +172,9 @@ def gradio_ui():
             email_content_mode.change(update_attachment_stats_new_mode, inputs=[email_content_mode, attachment_format], outputs=[attachment_stats])
             attachment_format.change(update_attachment_stats_new_mode, inputs=[email_content_mode, attachment_format], outputs=[attachment_stats])
             
+            # Handler to toggle GMass preview based on mode selection
+            mode.change(toggle_gmass_preview, inputs=[mode], outputs=[gmass_preview_group])
+            
             # Gmail authentication handlers (NEW INTERFACE!)
             # Update auth status when accounts file changes
             def update_auth_display_with_new_interface(acc_file):
@@ -176,20 +187,54 @@ def gradio_ui():
             )
             
             
-            gmass_test_btn.click(
-                send_gmass_test_simple,
-                inputs=[accounts_file, mode, subjects_text, bodies_text, gmass_recipients_text, 
-                       email_content_mode, attachment_format, invoice_format, support_number, 
-                       use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
-                outputs=[gmass_status, gmass_urls_display]
-            )
+            # Unified sending function that handles both modes
+            def unified_send_handler(accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
+                                   subjects_text, bodies_text, gmass_recipients_text, email_content_mode, 
+                                   attachment_format, invoice_format, support_number, use_gmail_api, 
+                                   gmail_credentials_files, sender_name_type):
+                """Handle both GMass and Leads modes with single button"""
+                
+                # Call the main worker
+                results_generator = main_worker_new_mode(
+                    accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
+                    subjects_text, bodies_text, gmass_recipients_text, email_content_mode, 
+                    attachment_format, invoice_format, support_number, use_gmail_api, 
+                    gmail_credentials_files, sender_name_type
+                )
+                
+                # For GMass mode, also generate URLs
+                if mode == "gmass" and accounts_file:
+                    try:
+                        accounts_lines = parse_file_lines(accounts_file)
+                        acc_valid, acc_msg, valid_accounts = validate_accounts_file(accounts_lines)
+                        
+                        if acc_valid:
+                            sender_emails = [acc['email'] for acc in valid_accounts]
+                            table_data = []
+                            for email in sender_emails:
+                                if '@' in email:
+                                    username = email.split('@')[0]
+                                    encoded_username = urllib.parse.quote(username)
+                                    url = f"https://www.gmass.co/inbox?q={encoded_username}"
+                                    table_data.append([email, url])
+                                else:
+                                    table_data.append([f"{email} (Invalid)", "N/A"])
+                            
+                            # Update GMass status and URLs
+                            gmass_status_update = f"Sending complete! Check {len(sender_emails)} GMass URLs below"
+                            return (*results_generator, gmass_status_update, table_data)
+                    except:
+                        pass
+                
+                # For leads mode or if GMass URL generation fails
+                return (*results_generator, "Not applicable for Leads mode", [["N/A", "N/A"]])
             
             start_btn.click(
-                main_worker_new_mode,
+                unified_send_handler,
                 inputs=[accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
                        subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format, invoice_format,
                        support_number, use_gmail_api, gmail_auth_components['credential_files'], sender_name_type],
-                outputs=[log_box, progress_html, account_errors_display, error_summary]
+                outputs=[log_box, progress_html, account_errors_display, error_summary, gmass_status, gmass_urls_display]
             )
     
     return demo
