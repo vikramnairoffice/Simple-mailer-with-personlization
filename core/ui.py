@@ -1,7 +1,10 @@
 import gradio as gr
 from mailer import main_worker_new_mode, update_file_stats, update_attachment_stats
 from content import DEFAULT_SUBJECTS, DEFAULT_BODIES, DEFAULT_GMASS_RECIPIENTS, SENDER_NAME_TYPES, DEFAULT_SENDER_NAME_TYPE
-from gmail_auth_ui import update_auth_status_from_accounts, authenticate_single_account, get_credential_summary, create_gmail_auth_interface
+from ui_token_helpers import (
+    analyze_token_files, get_authenticated_gmail_accounts, validate_gmail_api_setup,
+    toggle_auth_method, update_gmail_api_status, unified_send_handler
+)
 import urllib.parse
 from mailer import parse_file_lines, validate_accounts_file, convert_mode_to_attachment_flags, main_worker
 
@@ -138,17 +141,16 @@ def gradio_ui():
             
             # Gmail API Section - Shows when "Gmail API" is selected  
             with gr.Group(visible=False) as gmail_api_section:
-                gr.Markdown("**Gmail API credentials uploaded above. Authenticate your accounts:**")
+                gr.Markdown("**Token-based Gmail API - No OAuth setup needed!**")
+                gr.Markdown("Upload your Gmail token JSON files directly. These should contain refresh tokens from your OAuth2 setup.")
                 
-                # Authentication status table
+                # Token status table
                 auth_status_table = gr.DataFrame(
                     headers=["Email", "Status", "Action"],
                     datatype=["str", "str", "str"],
-                    value=[["No credentials uploaded yet", "Pending", "Upload JSON file first"]],
-                    label="Gmail Authentication Status"
+                    value=[["No token files uploaded yet", "Pending", "Upload token JSON files first"]],
+                    label="Gmail Token Status"
                 )
-                
-                authenticate_btn = gr.Button("🔑 Authenticate Gmail Accounts", variant="secondary")
             
             # Streamlined Attachment/Invoice Selection
             with gr.Row():
@@ -196,22 +198,16 @@ def gradio_ui():
                 error_summary = gr.HTML(label="Error Summary")
             
             # Function to toggle authentication method UI
-            def toggle_auth_method(auth_method):
+            def toggle_auth_method_ui(auth_method):
                 """Toggle the single upload box label and instructions based on auth method selection"""
-                if auth_method == "App Password":
-                    return (
-                        gr.update(label="Accounts File (email,password)", file_types=[".txt", ".csv"], file_count="single"),  # auth_file
-                        gr.update(visible=True),   # app_pass_instructions
-                        gr.update(visible=False),  # gmail_api_section
-                        "App Password method selected - Upload accounts file with email,password format"
-                    )
-                else:  # Gmail API
-                    return (
-                        gr.update(label="Gmail API Credentials (JSON files)", file_types=[".json"], file_count="multiple"),  # auth_file
-                        gr.update(visible=False),  # app_pass_instructions
-                        gr.update(visible=True),   # gmail_api_section
-                        "Gmail API method selected - Upload Gmail credentials JSON files"
-                    )
+                file_update, instructions_visible, status_message = toggle_auth_method(auth_method)
+                
+                return (
+                    gr.update(**file_update),  # auth_file
+                    gr.update(visible=not instructions_visible),   # app_pass_instructions (reversed)
+                    gr.update(visible=instructions_visible),   # gmail_api_section
+                    status_message
+                )
             
             # Function to analyze uploaded auth file based on method
             def analyze_auth_file(file, auth_method):
@@ -223,10 +219,7 @@ def gradio_ui():
                     # Use existing file stats for accounts file
                     return update_file_stats(file, None)[0]  # Return only accounts stats
                 else:  # Gmail API
-                    if isinstance(file, list):
-                        return f"Gmail API: {len(file)} credential files uploaded"
-                    else:
-                        return "Gmail API: 1 credential file uploaded"
+                    return analyze_token_files(file)
             
             # Function to toggle visibility based on email content mode
             def toggle_content_groups(mode):
@@ -251,7 +244,7 @@ def gradio_ui():
             
             # Authentication method change handler
             auth_method.change(
-                fn=toggle_auth_method,
+                fn=toggle_auth_method_ui,
                 inputs=[auth_method],
                 outputs=[auth_file, app_pass_instructions, gmail_api_section, auth_file_stats]
             )
@@ -276,78 +269,16 @@ def gradio_ui():
             # Handler to toggle GMass preview based on mode selection
             mode.change(toggle_gmass_preview, inputs=[mode], outputs=[gmass_preview_group])
             
-            # Gmail authentication handlers (CONDITIONAL INTERFACE!)
-            # Update auth status when auth file changes in Gmail API mode
-            def update_gmail_auth_display(auth_file, auth_method):
-                if auth_method == "Gmail API" and auth_file:
-                    if isinstance(auth_file, list):
-                        return [["Credentials uploaded", "Ready", f"{len(auth_file)} files uploaded"]]
-                    else:
-                        return [["Credentials uploaded", "Ready", "1 file uploaded"]]
-                return [["No credentials uploaded yet", "Pending", "Upload JSON file first"]]
-            
+            # Gmail token status handlers
+            # Update token status when auth file changes in Gmail API mode
             auth_file.change(
-                fn=update_gmail_auth_display,
+                fn=update_gmail_api_status,
                 inputs=[auth_file, auth_method],
                 outputs=[auth_status_table]
             )
             
             
-            # Unified sending function that handles both modes
-            def unified_send_handler(auth_file, auth_method, leads_file, leads_per_account, num_accounts_to_use, mode, 
-                                   subjects_text, bodies_text, gmass_recipients_text, email_content_mode, 
-                                   attachment_format, invoice_format, support_number, sender_name_type):
-                """Handle both GMass and Leads modes with new authentication method selection"""
-                
-                # Determine use_gmail_api and accounts_file based on auth_method
-                if auth_method == "Gmail API":
-                    use_gmail_api = True
-                    accounts_file = None  # No accounts file needed for Gmail API
-                    gmail_credentials_files = auth_file  # Use auth_file as credentials
-                else:  # App Password
-                    use_gmail_api = False
-                    accounts_file = auth_file  # Use auth_file as accounts file
-                    gmail_credentials_files = None  # No credentials needed for App Password
-                
-                # Call the main worker
-                results_generator = main_worker_new_mode(
-                    accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
-                    subjects_text, bodies_text, gmass_recipients_text, email_content_mode, 
-                    attachment_format, invoice_format, support_number, use_gmail_api, 
-                    gmail_credentials_files, sender_name_type
-                )
-                
-                # For GMass mode, also generate URLs
-                if mode == "gmass" and auth_file:
-                    try:
-                        if auth_method == "App Password":
-                            accounts_lines = parse_file_lines(accounts_file)
-                            acc_valid, acc_msg, valid_accounts = validate_accounts_file(accounts_lines)
-                            
-                            if acc_valid:
-                                sender_emails = [acc['email'] for acc in valid_accounts]
-                        else:  # Gmail API
-                            # For Gmail API, get emails from authentication status
-                            sender_emails = ["gmail-api@placeholder.com"]  # Should be updated with actual authenticated emails
-                        
-                        table_data = []
-                        for email in sender_emails:
-                            if '@' in email:
-                                username = email.split('@')[0]
-                                encoded_username = urllib.parse.quote(username)
-                                url = f"https://www.gmass.co/inbox?q={encoded_username}"
-                                table_data.append([email, url])
-                            else:
-                                table_data.append([f"{email} (Invalid)", "N/A"])
-                        
-                        # Update GMass status and URLs
-                        gmass_status_update = f"Sending complete! Check {len(sender_emails)} GMass URLs below"
-                        return (*results_generator, gmass_status_update, table_data)
-                    except:
-                        pass
-                
-                # For leads mode or if GMass URL generation fails
-                return (*results_generator, "Not applicable for Leads mode", [["N/A", "N/A"]])
+            # Use the imported unified_send_handler from ui_token_helpers
             
             start_btn.click(
                 unified_send_handler,

@@ -30,33 +30,37 @@ except ImportError:
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 def _ensure_service_for_sender(creds_json_path, email_hint=None, credential_files=None):
-    """Ensure Gmail service exists for sender using new authentication manager"""
+    """Ensure Gmail service exists for sender using token manager"""
     if not GMAIL_API_AVAILABLE:
         return None
     
+    # Return None if no credential files provided
+    if not credential_files:
+        return None
+    
     try:
-        from gmail_auth_manager import gmail_auth_manager
+        from token_manager import token_manager
         
-        # Load credentials if provided
+        # Load token files if provided
         if credential_files:
-            gmail_auth_manager.load_credentials(credential_files)
+            token_manager.load_token_files(credential_files)
         
         # Try to get service for the account
         if email_hint:
-            service = gmail_auth_manager.get_service_for_account(email_hint)
+            service = token_manager.get_service_for_email(email_hint)
             if service:
                 return service
             else:
-                print(f"Gmail API service not available for {email_hint}. Please authenticate via UI first.")
+                print(f"Gmail API service not available for {email_hint}. Please upload token file via UI first.")
                 return None
         
         return None
         
     except ImportError:
-        print("Gmail authentication system not available. Please ensure gmail_auth_manager.py is present.")
+        print("Token manager not available. Please ensure token_manager.py is present.")
         return None
     except Exception as e:
-        print(f"Error with Gmail authentication system: {e}")
+        print(f"Error with token manager: {e}")
         return None
 
 def _gmail_api_send(service, sender, to_addr, subject, body_text, attachments=None, sender_name=None):
