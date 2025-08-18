@@ -90,7 +90,7 @@ def _gmail_api_send(service, sender, to_addr, subject, body_text, attachments=No
         return False, "GMAIL_API_ERROR", f"Gmail API error for {sender}: {e}"
 
 class SmtpMailer:
-    """SMTP email sender with support for multiple providers"""
+    """SMTP email sender with support for multiple providers and persistent connections"""
     
     def __init__(self):
         self.smtp_configs = {
@@ -100,9 +100,86 @@ class SmtpMailer:
             'outlook.com': {'server': 'smtp-mail.outlook.com', 'port': 587},
             'aol.com': {'server': 'smtp.aol.com', 'port': 587}
         }
+        self.connection = None
+        self.current_account = None
+        self.config = None
+    
+    def connect(self, account):
+        """Establish persistent SMTP connection for an account"""
+        try:
+            domain = account['email'].split('@')[1].lower()
+            config = self.smtp_configs.get(domain)
+            
+            if not config:
+                return False, "UNSUPPORTED_PROVIDER", f"Unsupported email provider: {domain}"
+            
+            # Close existing connection if any
+            self.disconnect()
+            
+            # Establish new connection
+            self.connection = smtplib.SMTP(config['server'], config['port'])
+            self.connection.starttls()
+            self.connection.login(account['email'], account['password'])
+            
+            # Store account and config for this connection
+            self.current_account = account
+            self.config = config
+            
+            return True, None, f"Connected to {account['email']}"
+            
+        except smtplib.SMTPAuthenticationError:
+            self.disconnect()
+            return False, "AUTH_FAILED", f"Authentication failed for {account['email']}"
+        except Exception as e:
+            self.disconnect()
+            return False, "CONNECTION_ERROR", f"Connection error for {account['email']}: {e}"
+    
+    def disconnect(self):
+        """Close the persistent SMTP connection"""
+        if self.connection:
+            try:
+                self.connection.quit()
+            except:
+                pass  # Ignore errors during cleanup
+            finally:
+                self.connection = None
+                self.current_account = None
+                self.config = None
+    
+    def send_email_with_connection(self, to_addr, subject, body, attachments=None, sender_name=None):
+        """Send email using existing persistent connection"""
+        if not self.connection or not self.current_account:
+            return False, "NO_CONNECTION", "No active SMTP connection"
+        
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = f"{sender_name} <{self.current_account['email']}>" if sender_name else self.current_account['email']
+            msg['To'] = to_addr
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Add attachments
+            if attachments:
+                for filename, filepath in attachments.items():
+                    with open(filepath, 'rb') as f:
+                        part = MIMEApplication(f.read(), Name=filename)
+                        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+                        msg.attach(part)
+            
+            # Send email using persistent connection
+            self.connection.send_message(msg)
+            
+            return True, None, f"Email sent from {self.current_account['email']} to {to_addr}"
+            
+        except smtplib.SMTPServerDisconnected:
+            return False, "CONNECTION_LOST", f"SMTP connection lost for {self.current_account['email']}"
+        except smtplib.SMTPRecipientsRefused:
+            return False, "INVALID_RECIPIENT", f"Invalid recipient: {to_addr}"
+        except Exception as e:
+            return False, "SMTP_ERROR", f"SMTP error for {self.current_account['email']}: {e}"
     
     def send_email(self, account, to_addr, subject, body, attachments=None, sender_name=None):
-        """Send email via SMTP"""
+        """Send email via SMTP (legacy method - creates new connection per email)"""
         try:
             domain = account['email'].split('@')[1].lower()
             config = self.smtp_configs.get(domain)
@@ -154,6 +231,11 @@ class AccountErrorTracker:
             'SUSPENDED': 'Account Suspended',
             'QUOTA_EXCEEDED': 'Quota Exceeded',
             'CONNECTION_ERROR': 'Connection Error',
+            'CONNECTION_LOST': 'Connection Lost',
+            'CONNECTION_FAILED': 'Connection Failed',
+            'CONNECTION_RETRY': 'Connection Retry',
+            'CONNECTION_SUCCESS': 'Connection Success',
+            'NO_CONNECTION': 'No Active Connection',
             'TIMEOUT': 'Timeout',
             'BLOCKED': 'Account Blocked',
             'UNSUPPORTED_PROVIDER': 'Unsupported Provider',
@@ -393,10 +475,13 @@ def remove_email_from_leads_file(leads_file_path, email_to_remove):
             print(f"Error removing {email_to_remove} from leads file: {e}")
 
 def send_worker(account, leads_queue, results_queue, config):
-    """Worker thread for sending emails from one account"""
+    """Worker thread for sending emails from one account with persistent SMTP connection"""
     mailer = SmtpMailer()
     invoice_gen = InvoiceGenerator()
     sent_count = 0
+    smtp_connected = False
+    connection_retry_count = 0
+    max_connection_retries = 3
     
     # Setup Gmail API if needed
     gmail_service = None
@@ -410,6 +495,46 @@ def send_worker(account, leads_queue, results_queue, config):
                 )
             except:
                 pass
+    
+    # Establish SMTP connection once (if not using Gmail API)
+    if not gmail_service:
+        while not smtp_connected and connection_retry_count < max_connection_retries:
+            success, error_type, message = mailer.connect(account)
+            if success:
+                smtp_connected = True
+                results_queue.put({
+                    'account': account['email'],
+                    'lead': None,
+                    'success': True,
+                    'error_type': 'CONNECTION_SUCCESS',
+                    'message': f"SMTP connection established for {account['email']}",
+                    'sent_count': sent_count
+                })
+                break
+            else:
+                connection_retry_count += 1
+                results_queue.put({
+                    'account': account['email'],
+                    'lead': None,
+                    'success': False,
+                    'error_type': error_type,
+                    'message': f"Connection attempt {connection_retry_count}: {message}",
+                    'sent_count': sent_count
+                })
+                if connection_retry_count < max_connection_retries:
+                    time.sleep(2)  # Wait before retry
+        
+        if not smtp_connected:
+            # Connection failed after all retries
+            results_queue.put({
+                'account': account['email'],
+                'lead': None,
+                'success': None,
+                'error_type': 'COMPLETED',
+                'message': f"Account {account['email']} failed to connect after {max_connection_retries} attempts",
+                'sent_count': sent_count
+            })
+            return
     
     while True:
         try:
@@ -468,9 +593,34 @@ def send_worker(account, leads_queue, results_queue, config):
                     gmail_service, account['email'], lead_email, subject, body, attachments, sender_name
                 )
             else:
-                success, error_type, message = mailer.send_email(
-                    account, lead_email, subject, body, attachments, sender_name
+                # Use persistent connection
+                success, error_type, message = mailer.send_email_with_connection(
+                    lead_email, subject, body, attachments, sender_name
                 )
+                
+                # Handle connection lost - try to reconnect once
+                if not success and error_type == 'CONNECTION_LOST':
+                    results_queue.put({
+                        'account': account['email'],
+                        'lead': lead_email,
+                        'success': False,
+                        'error_type': 'CONNECTION_RETRY',
+                        'message': f"Connection lost, attempting to reconnect for {account['email']}",
+                        'sent_count': sent_count
+                    })
+                    
+                    # Attempt to reconnect
+                    reconnect_success, reconnect_error, reconnect_msg = mailer.connect(account)
+                    if reconnect_success:
+                        # Retry the email send
+                        success, error_type, message = mailer.send_email_with_connection(
+                            lead_email, subject, body, attachments, sender_name
+                        )
+                        if success:
+                            message = f"Reconnected and sent: {message}"
+                    else:
+                        error_type = 'CONNECTION_FAILED'
+                        message = f"Reconnection failed: {reconnect_msg}"
             
             if success:
                 sent_count += 1
@@ -503,6 +653,10 @@ def send_worker(account, leads_queue, results_queue, config):
                 'sent_count': sent_count
             })
             break
+    
+    # Clean up SMTP connection
+    if not gmail_service:
+        mailer.disconnect()
     
     # Signal completion
     results_queue.put({
