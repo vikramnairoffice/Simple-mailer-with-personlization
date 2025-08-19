@@ -183,3 +183,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# OAuth tokens and sensitive files
+testing/*.json
+*.oauth2_token
+*credentials*.json
