@@ -152,6 +152,21 @@ def gradio_ui():
                     label="Gmail Token Status"
                 )
             
+            # SMTP Account Selection Section - Shows after validation
+            with gr.Group(visible=False) as smtp_selection_section:
+                gr.Markdown("### 📋 Select SMTP Accounts to Use")
+                gr.Markdown("**Choose which validated accounts to use for sending:**")
+                
+                smtp_selection_table = gr.DataFrame(
+                    headers=["Account", "Status", "Use"],
+                    datatype=["str", "str", "bool"],
+                    value=[["Upload and validate accounts first", "Pending", False]],
+                    label="SMTP Account Selection",
+                    interactive=True
+                )
+                
+                selection_status = gr.HTML(value="Upload accounts to see selection options", label="Selection Status")
+            
             # Streamlined Attachment/Invoice Selection
             with gr.Row():
                 email_content_mode = gr.Radio(["Attachment", "Invoice"], value="Attachment", label="Email Content Type", info="Choose what to include with your emails")
@@ -242,6 +257,106 @@ def gradio_ui():
                 else:  # Invoice mode
                     return "Invoice mode: Personalized invoices will be generated"
             
+            # Function to validate accounts and show selection table
+            def validate_and_show_selection(auth_file, auth_method):
+                """Validate uploaded accounts and show selection table"""
+                if not auth_file:
+                    return (
+                        gr.update(visible=False),  # Hide selection section
+                        [["No file uploaded", "❌ Pending", False]],
+                        "Upload accounts to see selection options"
+                    )
+                
+                try:
+                    if auth_method == "App Password":
+                        # Validate accounts file
+                        from mailer import parse_file_lines, validate_accounts_file
+                        
+                        accounts_lines = parse_file_lines(auth_file)
+                        acc_valid, acc_msg, valid_accounts = validate_accounts_file(accounts_lines)
+                        
+                        if not acc_valid:
+                            return (
+                                gr.update(visible=False),
+                                [["Validation failed", "❌ Error", False]],
+                                f"Error: {acc_msg}"
+                            )
+                        
+                        # Create selection table with working accounts
+                        validated_accounts = [{"email": acc["email"], "status": "Working"} for acc in valid_accounts]
+                        
+                        from ui_token_helpers import create_selection_table_from_validation
+                        validation_results = {"working": [{"email": acc["email"]} for acc in valid_accounts]}
+                        table_data = create_selection_table_from_validation(validation_results)
+                        
+                        selection_msg = f"✅ {len(valid_accounts)} accounts validated. Select which ones to use:"
+                        
+                        return (
+                            gr.update(visible=True),  # Show selection section
+                            table_data,
+                            selection_msg
+                        )
+                    
+                    else:  # Gmail API
+                        # Validate token files
+                        from ui_token_helpers import get_authenticated_gmail_accounts
+                        
+                        gmail_accounts = get_authenticated_gmail_accounts()
+                        
+                        if not gmail_accounts:
+                            return (
+                                gr.update(visible=False),
+                                [["No Gmail accounts found", "❌ Error", False]],
+                                "No authenticated Gmail accounts found in tokens"
+                            )
+                        
+                        # Create selection table for Gmail accounts
+                        table_data = []
+                        for email in gmail_accounts:
+                            table_data.append([email, "Working", True])  # All selected by default
+                        
+                        selection_msg = f"✅ {len(gmail_accounts)} Gmail accounts authenticated. Select which ones to use:"
+                        
+                        return (
+                            gr.update(visible=True),  # Show selection section
+                            table_data,
+                            selection_msg
+                        )
+                        
+                except Exception as e:
+                    return (
+                        gr.update(visible=False),
+                        [["Error during validation", "❌ Error", False]],
+                        f"Validation error: {str(e)}"
+                    )
+            
+            # Function to handle sending with account selection
+            def send_with_selection(auth_file, auth_method, leads_file, leads_per_account, num_accounts_to_use, mode,
+                                  subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format,
+                                  invoice_format, support_number, sender_name_type, selection_table_data):
+                """Handle sending with selected accounts only"""
+                
+                if not selection_table_data:
+                    return ("No accounts selected", "", "", "", "Selection Error", [["Error", "No accounts selected"]])
+                
+                # Extract selected emails from table data
+                selected_emails = []
+                for row in selection_table_data:
+                    if len(row) >= 3 and row[2]:  # Check if checkbox is True
+                        selected_emails.append(row[0])
+                
+                if not selected_emails:
+                    return ("No accounts selected", "", "", "", "Selection Error", [["Error", "No accounts selected"]])
+                
+                # Use the selection-aware send handler
+                from ui_token_helpers import unified_send_handler_with_selection
+                
+                return unified_send_handler_with_selection(
+                    auth_file, auth_method, leads_file, leads_per_account, len(selected_emails), mode,
+                    subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format,
+                    invoice_format, support_number, sender_name_type, selected_emails
+                )
+            
             # Authentication method change handler
             auth_method.change(
                 fn=toggle_auth_method_ui,
@@ -277,14 +392,26 @@ def gradio_ui():
                 outputs=[auth_status_table]
             )
             
+            # SMTP Selection handlers - Show selection table after validation
+            auth_file.change(
+                fn=validate_and_show_selection,
+                inputs=[auth_file, auth_method],
+                outputs=[smtp_selection_section, smtp_selection_table, selection_status]
+            )
             
-            # Use the imported unified_send_handler from ui_token_helpers
+            # Also update selection when auth method changes
+            auth_method.change(
+                fn=validate_and_show_selection,
+                inputs=[auth_file, auth_method],
+                outputs=[smtp_selection_section, smtp_selection_table, selection_status]
+            )
             
+            # Use the new send handler with account selection
             start_btn.click(
-                unified_send_handler,
+                send_with_selection,
                 inputs=[auth_file, auth_method, leads_file, leads_per_account, num_accounts_to_use, mode, 
                        subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format, invoice_format,
-                       support_number, sender_name_type],
+                       support_number, sender_name_type, smtp_selection_table],
                 outputs=[log_box, progress_html, account_errors_display, error_summary, gmass_status, gmass_urls_display]
             )
     

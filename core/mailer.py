@@ -668,6 +668,64 @@ def send_worker(account, leads_queue, results_queue, config):
         'sent_count': sent_count
     })
 
+def main_worker_with_filtered_accounts(filtered_accounts, leads_file, leads_per_account, num_accounts_to_use, mode,
+                                     subjects_text, bodies_text, gmass_recipients_text, include_pdfs, include_images,
+                                     support_number, attachment_format, use_gmail_api, gmail_credentials_files, sender_name_type="business"):
+    """Main worker function that accepts pre-filtered accounts instead of accounts file"""
+    
+    # Skip account file parsing and validation since accounts are pre-filtered
+    valid_accounts = filtered_accounts
+    
+    if not valid_accounts:
+        yield "ERROR: No valid accounts provided", "", "", ""
+        return
+    
+    # Parse subjects and bodies
+    subjects = [s.strip() for s in subjects_text.split('\n') if s.strip()]
+    bodies = [b.strip() for b in bodies_text.split('\n') if b.strip()]
+    
+    if not subjects:
+        subjects = DEFAULT_SUBJECTS
+    if not bodies:
+        bodies = DEFAULT_BODIES
+    
+    # Handle different modes
+    if mode == "gmass":
+        # GMass mode - use gmass recipients
+        gmass_recipients = [r.strip() for r in gmass_recipients_text.split('\n') if r.strip()]
+        if not gmass_recipients:
+            gmass_recipients = DEFAULT_GMASS_RECIPIENTS
+        
+        # For GMass mode, each account sends to ALL recipients
+        # Use all provided accounts (they're already filtered)
+        selected_accounts = valid_accounts[:num_accounts_to_use] if num_accounts_to_use < len(valid_accounts) else valid_accounts
+        
+        # Send to gmass recipients
+        yield from _run_workers(selected_accounts, gmass_recipients, len(gmass_recipients), subjects, bodies, 
+                              include_pdfs, include_images, support_number, attachment_format, use_gmail_api, 
+                              gmail_credentials_files, sender_name_type)
+        
+    else:  # leads mode
+        if not leads_file:
+            yield "ERROR: No leads file provided for leads mode", "", "", ""
+            return
+        
+        leads_lines = parse_file_lines(leads_file)
+        leads = [lead.strip() for lead in leads_lines if lead.strip()]
+        
+        if not leads:
+            yield "ERROR: No leads found in leads file", "", "", ""
+            return
+        
+        # Use filtered accounts for leads distribution
+        selected_accounts = valid_accounts[:num_accounts_to_use] if num_accounts_to_use < len(valid_accounts) else valid_accounts
+        
+        # Distribute leads
+        yield from _run_workers(selected_accounts, leads, leads_per_account, subjects, bodies, 
+                              include_pdfs, include_images, support_number, attachment_format, use_gmail_api, 
+                              gmail_credentials_files, sender_name_type)
+
+
 def main_worker_new_mode(accounts_file, leads_file, leads_per_account, num_accounts_to_use, mode, 
                         subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format, invoice_format,
                         support_number, use_gmail_api, gmail_credentials_files, sender_name_type="business"):
