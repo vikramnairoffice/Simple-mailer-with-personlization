@@ -184,7 +184,6 @@ def gradio_ui():
             
             with gr.Row():
                 leads_per_account = gr.Number(label="Leads to Send Per Account", value=10, precision=0)
-                num_accounts_to_use = gr.Slider(minimum=1, maximum=50, value=1, step=1, label="Number of Concurrent Accounts to Use")
             
             mode = gr.Radio(["gmass", "leads"], value="gmass", label="Mode", info="GMass Broadcast: every account sends to all recipients. Leads Distribution: split leads across accounts.")
             
@@ -331,7 +330,7 @@ def gradio_ui():
                     )
             
             # Function to handle sending with account selection
-            def send_with_selection(auth_file, auth_method, leads_file, leads_per_account, num_accounts_to_use, mode,
+            def send_with_selection(auth_file, auth_method, leads_file, leads_per_account, mode,
                                   subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format,
                                   invoice_format, support_number, sender_name_type, selection_table_data):
                 """Handle sending with selected accounts only"""
@@ -409,7 +408,7 @@ def gradio_ui():
             # Use the new send handler with account selection
             start_btn.click(
                 send_with_selection,
-                inputs=[auth_file, auth_method, leads_file, leads_per_account, num_accounts_to_use, mode, 
+                inputs=[auth_file, auth_method, leads_file, leads_per_account, mode, 
                        subjects_text, bodies_text, gmass_recipients_text, email_content_mode, attachment_format, invoice_format,
                        support_number, sender_name_type, smtp_selection_table],
                 outputs=[log_box, progress_html, account_errors_display, error_summary, gmass_status, gmass_urls_display]
@@ -423,7 +422,7 @@ def main():
     app.launch(
         share=True,
         server_name="0.0.0.0", 
-        server_port=7863,
+        server_port=7866,
         debug=False
     )
 
