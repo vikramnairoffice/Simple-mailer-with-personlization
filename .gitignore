@@ -172,6 +172,10 @@ test/
 pdfs/
 images/
 
+# Gradio cache files
+.gradio/
+core/.gradio/
+
 # System files
 .DS_Store
 Thumbs.db
