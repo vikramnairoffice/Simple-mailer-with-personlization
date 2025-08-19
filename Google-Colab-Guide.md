@@ -20,7 +20,7 @@ Copy and paste this cell:
 
 ```python
 # Import the UI module
-from core.ui import main
+from ui import main
 
 # Launch the Gradio interface
 main()
@@ -34,8 +34,7 @@ If the above doesn't work, try this alternative approach:
 import subprocess
 import os
 
-# Create core directory
-os.makedirs('core', exist_ok=True)
+# No need to create core directory - files are now in root
 
 # Download main files (replace with your actual raw GitHub URLs)
 files_to_download = [
@@ -50,13 +49,13 @@ files_to_download = [
 
 # Download each file
 for file_name in files_to_download:
-    !wget -O core/{file_name} https://raw.githubusercontent.com/vikramnairoffice/Simple-mailer-with-personlization/main/core/{file_name}
+    !wget -O {file_name} https://raw.githubusercontent.com/vikramnairoffice/Simple-mailer-with-personlization/main/{file_name}
 
 # Install dependencies
-!pip install -r core/requirements.txt
+!pip install -r requirements.txt
 
 # Launch the application
-exec(open('core/ui.py').read())
+exec(open('ui.py').read())
 ```
 
 ## 📁 File Upload Instructions
@@ -138,7 +137,7 @@ exec(open('core/ui.py').read())
 # Ensure files are in the correct directory
 import os
 print("Current directory:", os.getcwd())
-print("Files in core/:", os.listdir('core/') if os.path.exists('core') else 'core/ not found')
+print("Python files:", [f for f in os.listdir('.') if f.endswith('.py')])
 ```
 
 **Authentication Issues:**
@@ -161,7 +160,7 @@ Test the installation with this simple verification:
 ```python
 # Quick verification script
 try:
-    from core.ui import main
+    from ui import main
     print("✅ Installation successful! Ready to launch.")
     print("Run main() to start the application.")
 except ImportError as e:
